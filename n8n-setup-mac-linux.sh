@@ -96,14 +96,14 @@
 #
 # Settings you can edit directly (line numbers refer to this file as published)
 #   Line 123  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 127  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 130  N8N_HOST_PORT       port you open in the browser
-#   Line 135  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 138  DOCKER_NETWORK      only if you already use a different network name
-#   Line 143  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 156 to 159  JS_* and PY_*  modules the Code node may import
-#   Line 164  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 169  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 129  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 132  N8N_HOST_PORT       port you open in the browser
+#   Line 137  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 140  DOCKER_NETWORK      only if you already use a different network name
+#   Line 145  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 158 to 161  JS_* and PY_*  modules the Code node may import
+#   Line 166  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 171  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run
 #   bash n8n-setup-mac-linux.sh
@@ -122,8 +122,10 @@
 # files) and task-runners.json. $HOME works on both macOS and Linux.
 N8N_DATA_DIR="$HOME/n8n"
 
-# n8n and n8nio/runners always run the same version. "latest" upgrades on every
-# run; a number such as "2.45.4" holds you on that release.
+# n8n and n8nio/runners always run the same version. "latest" means the newest
+# release in the major version you're on (2.x stays 2.x). A run at the keyboard
+# asks before moving to a new major version. A number such as "2.45.4" holds
+# you on that release.
 N8N_VERSION="latest"
 
 # Port on your machine. With 5678 you open http://localhost:5678
@@ -171,7 +173,7 @@ NIGHTLY_TIME="02:00"
 # ---- Nothing below this line needs editing ----------------------------------
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 
 # Stop at the first command that fails.
 set -e
@@ -240,6 +242,7 @@ done
 RE_NAME='^[A-Za-z0-9._-]+$'
 RE_NUMBER='^[0-9]+$'
 RE_URL='^https?://[^[:space:]]+$'
+RE_VERSION='^[0-9]+\.[0-9]+\.[0-9]+$'
 RE_ALLOW='^[A-Za-z0-9_.,*@/-]*$'
 RE_TIME='^([01][0-9]|2[0-3]):[0-5][0-9]$'
 
@@ -418,7 +421,7 @@ menu() {
 # runners image offers. It asks the image itself, so the list always matches
 # the version that will run, and prints nothing if Docker can't answer.
 image_list() {
-  local image="n8nio/runners:$N8N_VERSION"
+  local image="n8nio/runners:$IMAGE_TAG"
   if ! docker image inspect "$image" >/dev/null 2>&1; then
     echo "${C_DIM}  Downloading the n8n runners image to read the list. This can take a minute...${C_OFF}" >&2
     docker pull -q "$image" >/dev/null 2>&1 || return 0
@@ -843,11 +846,89 @@ run_remove() {
 
 if [ "$REMOVE" = yes ]; then run_remove; fi
 
+# ---- Which n8n version to run -----------------------------------------------
+# A new major version of n8n (2.x to 3.x) almost always has breaking changes,
+# so "latest" means the newest release in the major version already installed.
+# Unattended runs never move up a major version. A run at the keyboard asks.
+
+container_version() {  # the n8n version the n8n container runs, e.g. 2.45.4
+  docker container inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' n8n 2>/dev/null || true
+}
+image_version() {  # image_version IMAGE: the n8n version an image holds
+  docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' "$1" 2>/dev/null || true
+}
+hub_digests() {  # hub_digests TAG: the image digests Docker Hub lists for n8nio/n8n:TAG
+  curl -fsS "https://hub.docker.com/v2/repositories/n8nio/n8n/tags/$1" 2>/dev/null \
+    | grep -o 'sha256:[0-9a-f]*' | sort -u | tr '\n' ' ' || true
+}
+newest_in_major() {  # newest_in_major 2: the newest stable 2.x.y release on Docker Hub
+  local tag beta next
+  beta="$(hub_digests beta)"; next="$(hub_digests next)"
+  # Newest first. The beta and next tags can point at a pre-release that
+  # still has a plain number, so those are skipped.
+  for tag in $(curl -fsS "https://hub.docker.com/v2/repositories/n8nio/n8n/tags?name=$1.&page_size=100&ordering=last_updated" 2>/dev/null \
+      | grep -o "\"name\":\"$1\.[0-9]*\.[0-9]*\"" | sed 's/"name":"//; s/"//' \
+      | sort -t. -k1,1nr -k2,2nr -k3,3nr); do
+    case "$(hub_digests "$tag")" in
+      "$beta"|"$next"|"") continue ;;
+    esac
+    echo "$tag"
+    return 0
+  done
+}
+
+ask_major_upgrade() {  # ask_major_upgrade CURRENT NEWEST
+  local new_major="${2%%.*}"
+  clear 2>/dev/null || printf '\033[2J\033[H'
+  show_banner
+  echo
+  echo "${C_WARN}n8n $2 is out. You're on n8n $1.${C_OFF}"
+  echo
+  echo "A new major version usually has breaking changes. Some nodes are removed"
+  echo "and some defaults change, so a few workflows may need fixing first."
+  echo "Before upgrading, open n8n, go to Settings > Migration Report and fix what"
+  echo "it flags, and back up your data folder. What's changing:"
+  echo "https://docs.n8n.io/changelog/v${new_major}0-breaking-changes"
+  echo
+  echo "If you say no, you stay on n8n ${1%%.*} and keep getting its updates."
+  ask_yes_no "Upgrade to n8n $2 now?" n
+}
+
+IMAGE_TAG="$N8N_VERSION"
+if [ "$N8N_VERSION" = latest ]; then
+  CURRENT_VERSION="$(container_version)"
+  echo "Checking for the newest n8n..."
+  NEWEST_VERSION=""
+  if docker pull -q n8nio/n8n:latest >/dev/null 2>&1; then
+    NEWEST_VERSION="$(image_version n8nio/n8n:latest)"
+  fi
+  cur_major="${CURRENT_VERSION%%.*}"
+  new_major="${NEWEST_VERSION%%.*}"
+  if ! [[ "$NEWEST_VERSION" =~ $RE_VERSION ]]; then
+    # Couldn't check, so keep what's running (or plain latest on a new install).
+    IMAGE_TAG="${CURRENT_VERSION:-latest}"
+  elif ! [[ "$CURRENT_VERSION" =~ $RE_VERSION ]] || [ "$cur_major" = "$new_major" ]; then
+    IMAGE_TAG="$NEWEST_VERSION"
+  elif [ "$new_major" -gt "$cur_major" ]; then
+    if [ -t 0 ] && [ "$NO_QUESTIONS" != yes ] && ask_major_upgrade "$CURRENT_VERSION" "$NEWEST_VERSION"; then
+      IMAGE_TAG="$NEWEST_VERSION"
+    else
+      IMAGE_TAG="$(newest_in_major "$cur_major")"
+      [[ "$IMAGE_TAG" =~ $RE_VERSION ]] || IMAGE_TAG="$CURRENT_VERSION"
+      echo "${C_WARN}n8n $new_major is available. Staying on n8n $cur_major ($IMAGE_TAG).${C_OFF}"
+      echo "To upgrade, run this script yourself and say yes when it asks."
+    fi
+  else
+    # Already on something newer than latest, such as a beta. Leave it.
+    IMAGE_TAG="$CURRENT_VERSION"
+  fi
+fi
+
 # Start downloading both images now, so they're ready or nearly ready by the
 # time the questions are done. The pull step further down waits for them.
-docker pull -q "n8nio/runners:$N8N_VERSION" >/dev/null 2>&1 &
+docker pull -q "n8nio/runners:$IMAGE_TAG" >/dev/null 2>&1 &
 RUNNERS_PULL_PID=$!
-docker pull -q "n8nio/n8n:$N8N_VERSION" >/dev/null 2>&1 &
+docker pull -q "n8nio/n8n:$IMAGE_TAG" >/dev/null 2>&1 &
 N8N_PULL_PID=$!
 
 # The list questions read from the runners image, so they wait for it first.
@@ -959,13 +1040,13 @@ WEBHOOK_URL_TO_USE="${N8N_WEBHOOK_URL:-http://localhost:$N8N_HOST_PORT/}"
 # Pulling before removing anything means a typo in the version or a network
 # problem stops the script while your current n8n is still running.
 
-echo "Pulling n8nio/n8n:$N8N_VERSION and n8nio/runners:$N8N_VERSION..."
+echo "Pulling n8nio/n8n:$IMAGE_TAG and n8nio/runners:$IMAGE_TAG..."
 # Let the background downloads finish. Pulling again afterwards takes a moment
 # and shows a real error if one of them failed.
 if [ -n "$RUNNERS_PULL_PID" ]; then wait "$RUNNERS_PULL_PID" || true; fi
 wait "$N8N_PULL_PID" || true
-docker pull "n8nio/n8n:$N8N_VERSION"
-docker pull "n8nio/runners:$N8N_VERSION"
+docker pull "n8nio/n8n:$IMAGE_TAG"
+docker pull "n8nio/runners:$IMAGE_TAG"
 
 # ---- Remove old containers --------------------------------------------------
 # "|| true" keeps going when the containers don't exist yet (first run).
@@ -1013,6 +1094,7 @@ cat > "$N8N_DATA_DIR/task-runners.json" << EOF
       "args": [
         "--disallow-code-generation-from-strings",
         "--disable-proto=delete",
+        "--no-experimental-webstorage",
         "/opt/runners/task-runner-javascript/dist/start.js"
       ],
       "health-check-server-port": "5681",
@@ -1096,6 +1178,11 @@ fi
 #   N8N_NATIVE_PYTHON_RUNNER     in n8n's reference compose file for the
 #                                Python runner
 #   NODES_EXCLUDE="[]"           added only when ENABLE_EXEC_NODES is yes
+#   N8N_COMPRESSION_NODE_*       keep the 2.x Compression node limits (2 GiB
+#                                unzipped, 5000 files), which n8n 3.0 lowers
+#   N8N_UNVERIFIED_PACKAGES_ENABLED=true
+#                                keeps installed community nodes loading,
+#                                which n8n 3.0 turns off by default
 #   (n8n 1.x also needed N8N_RUNNERS_ENABLED=true. n8n 2.x says it is no
 #   longer needed, so it is left out. Add it back only if you pin a 1.x version.)
 
@@ -1119,8 +1206,11 @@ docker run -d \
   -e N8N_RUNNERS_TASK_TIMEOUT="$TASK_TIMEOUT" \
   -e N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0 \
   -e N8N_NATIVE_PYTHON_RUNNER=true \
+  -e N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES=2147483648 \
+  -e N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES=5000 \
+  -e N8N_UNVERIFIED_PACKAGES_ENABLED=true \
   "${EXEC_NODES_ENV[@]}" \
-  "n8nio/n8n:$N8N_VERSION"
+  "n8nio/n8n:$IMAGE_TAG"
 
 # ---- Start the runners sidecar ----------------------------------------------
 #   N8N_RUNNERS_TASK_BROKER_URI  "n8n" is the container name above; Docker
@@ -1141,7 +1231,7 @@ docker run -d \
   -e N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679 \
   -e N8N_RUNNERS_TASK_TIMEOUT="$TASK_TIMEOUT" \
   -v "$N8N_DATA_DIR/task-runners.json:/etc/n8n-task-runners.json" \
-  "n8nio/runners:$N8N_VERSION"
+  "n8nio/runners:$IMAGE_TAG"
 
 echo
 echo "${C_OK}Done. Open http://localhost:$N8N_HOST_PORT${C_OFF}"

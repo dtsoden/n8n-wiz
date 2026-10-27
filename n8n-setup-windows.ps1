@@ -100,14 +100,14 @@
 #
 # Settings you can edit directly (line numbers refer to this file as published)
 #   Line 154  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 158  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 161  N8N_HOST_PORT       port you open in the browser
-#   Line 167  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 170  DOCKER_NETWORK      only if you already use a different network name
-#   Line 175  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 188 to 191  JS_* and PY_*  modules the Code node may import
-#   Line 196  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 201  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 160  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 163  N8N_HOST_PORT       port you open in the browser
+#   Line 169  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 172  DOCKER_NETWORK      only if you already use a different network name
+#   Line 177  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 190 to 193  JS_* and PY_*  modules the Code node may import
+#   Line 198  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 203  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
@@ -153,8 +153,10 @@ $S = [ordered]@{
     # files) and task-runners.json. Default: C:\Users\<you>\n8n
     N8N_DATA_DIR      = (Join-Path $env:USERPROFILE 'n8n')
 
-    # n8n and n8nio/runners always run the same version. "latest" upgrades on
-    # every run; a number such as "2.45.4" holds you on that release.
+    # n8n and n8nio/runners always run the same version. "latest" means the
+    # newest release in the major version you're on (2.x stays 2.x). A run at
+    # the keyboard asks before moving to a new major version. A number such as
+    # "2.45.4" holds you on that release.
     N8N_VERSION       = 'latest'
 
     # Port on your machine. With 5678 you open http://localhost:5678
@@ -202,7 +204,7 @@ $S = [ordered]@{
 }
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-$ScriptVersion = '1.0.0'
+$ScriptVersion = '1.1.0'
 
 # ---- Nothing below this line needs editing ----------------------------------
 
@@ -391,7 +393,7 @@ function Select-Option([string]$Question, [int]$Default, [string[]]$Options, [st
 # the version that will run, and returns '' if Docker can't answer.
 function Get-ImageList([string]$Kind) {
     Wait-RunnersImage
-    $image = "n8nio/runners:$($S.N8N_VERSION)"
+    $image = "n8nio/runners:$ImageTag"
     & docker image inspect $image *> $null
     if ($LASTEXITCODE -ne 0) {
         Write-Host '  Downloading the n8n runners image to read the list. This can take a minute...' -ForegroundColor Yellow
@@ -799,10 +801,86 @@ function Invoke-Remove {
 
 if ($Remove) { Invoke-Remove }
 
+# ---- Which n8n version to run -----------------------------------------------
+# A new major version of n8n (2.x to 3.x) almost always has breaking changes,
+# so "latest" means the newest release in the major version already installed.
+# Unattended runs never move up a major version. A run at the keyboard asks.
+
+# The n8n version an image or container holds, e.g. 2.45.4, read from its JSON
+# because Windows PowerShell 5.1 mangles the quotes a --format template needs.
+function Get-N8nVersion([string]$Kind, [string]$Name) {
+    $json = & docker $Kind inspect $Name 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $json) { return '' }
+    $o = @(($json | Out-String) | ConvertFrom-Json)[0]
+    if ($o.Config.Labels) { return [string]$o.Config.Labels.'org.opencontainers.image.version' }
+    return ''
+}
+
+# The newest stable $Major.x.y release on Docker Hub, or '' if Docker Hub can't
+# be reached. The beta and next tags can point at a pre-release that still has
+# a plain number, so those are skipped.
+function Get-NewestInMajor([string]$Major) {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $hub = 'https://hub.docker.com/v2/repositories/n8nio/n8n/tags'
+        $skip = @('beta', 'next') | ForEach-Object { (Invoke-RestMethod -UseBasicParsing -TimeoutSec 20 "$hub/$_").digest }
+        $r = Invoke-RestMethod -UseBasicParsing -TimeoutSec 20 "$hub`?name=$Major.&page_size=100&ordering=last_updated"
+        $tags = @($r.results | Where-Object { $_.name -match "^$Major\.\d+\.\d+$" -and $skip -notcontains $_.digest })
+        if (-not $tags) { return '' }
+        return ($tags | Sort-Object { [version]$_.name } | Select-Object -Last 1).name
+    } catch { return '' }
+}
+
+function Confirm-MajorUpgrade([string]$Current, [string]$Newest) {
+    $newMajor = $Newest.Split('.')[0]
+    try { Clear-Host } catch { Write-Host '' }
+    Show-Banner
+    Write-Host ''
+    Write-Host "n8n $Newest is out. You're on n8n $Current." -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host 'A new major version usually has breaking changes. Some nodes are removed'
+    Write-Host 'and some defaults change, so a few workflows may need fixing first.'
+    Write-Host 'Before upgrading, open n8n, go to Settings > Migration Report and fix what'
+    Write-Host "it flags, and back up your data folder. What's changing:"
+    Write-Host "https://docs.n8n.io/changelog/v$($newMajor)0-breaking-changes"
+    Write-Host ''
+    Write-Host "If you say no, you stay on n8n $($Current.Split('.')[0]) and keep getting its updates."
+    return (Ask-YesNo "Upgrade to n8n $Newest now?" 'n')
+}
+
+$ImageTag = $S.N8N_VERSION
+if ($S.N8N_VERSION -eq 'latest') {
+    $current = Get-N8nVersion 'container' 'n8n'
+    Write-Host 'Checking for the newest n8n...'
+    $newest = ''
+    & docker pull -q n8nio/n8n:latest *> $null
+    if ($LASTEXITCODE -eq 0) { $newest = Get-N8nVersion 'image' 'n8nio/n8n:latest' }
+    $versionPattern = '^\d+\.\d+\.\d+$'
+    if ($newest -notmatch $versionPattern) {
+        # Couldn't check, so keep what's running (or plain latest on a new install).
+        $ImageTag = if ($current) { $current } else { 'latest' }
+    } elseif ($current -notmatch $versionPattern -or $current.Split('.')[0] -eq $newest.Split('.')[0]) {
+        $ImageTag = $newest
+    } elseif ([int]$newest.Split('.')[0] -gt [int]$current.Split('.')[0]) {
+        if ($interactive -and -not $NoQuestions -and -not $Remove -and (Confirm-MajorUpgrade $current $newest)) {
+            $ImageTag = $newest
+        } else {
+            $curMajor = $current.Split('.')[0]
+            $ImageTag = Get-NewestInMajor $curMajor
+            if ($ImageTag -notmatch $versionPattern) { $ImageTag = $current }
+            Write-Host "n8n $($newest.Split('.')[0]) is available. Staying on n8n $curMajor ($ImageTag)." -ForegroundColor Yellow
+            Write-Host 'To upgrade, run this script yourself and say yes when it asks.'
+        }
+    } else {
+        # Already on something newer than latest, such as a beta. Leave it.
+        $ImageTag = $current
+    }
+}
+
 # Start downloading both images now, so they're ready or nearly ready by the
 # time the questions are done. The pull step further down waits for them.
-$RunnersPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pull', '-q', "n8nio/runners:$($S.N8N_VERSION)" -WindowStyle Hidden -PassThru
-$N8nPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pull', '-q', "n8nio/n8n:$($S.N8N_VERSION)" -WindowStyle Hidden -PassThru
+$RunnersPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pull', '-q', "n8nio/runners:$ImageTag" -WindowStyle Hidden -PassThru
+$N8nPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pull', '-q', "n8nio/n8n:$ImageTag" -WindowStyle Hidden -PassThru
 
 # The list questions read from the runners image, so they wait for it first.
 function Wait-RunnersImage {
@@ -933,7 +1011,7 @@ function Invoke-Docker {
 # Pulling before removing anything means a typo in the version or a network
 # problem stops the script while your current n8n is still running.
 
-$version = $S.N8N_VERSION
+$version = $ImageTag
 Write-Host "Pulling n8nio/n8n:$version and n8nio/runners:$version..."
 # Let the background downloads finish. Pulling again afterwards takes a moment
 # and shows a real error if one of them failed.
@@ -996,6 +1074,7 @@ $taskRunnersJson = @'
       "args": [
         "--disallow-code-generation-from-strings",
         "--disable-proto=delete",
+        "--no-experimental-webstorage",
         "/opt/runners/task-runner-javascript/dist/start.js"
       ],
       "health-check-server-port": "5681",
@@ -1105,7 +1184,13 @@ $n8nArgs = @(
     # another container can't reach
     '-e', 'N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0',
     # In n8n's reference compose file for the Python runner
-    '-e', 'N8N_NATIVE_PYTHON_RUNNER=true'
+    '-e', 'N8N_NATIVE_PYTHON_RUNNER=true',
+    # Keep the 2.x Compression node limits (2 GiB unzipped, 5000 files),
+    # which n8n 3.0 lowers
+    '-e', 'N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES=2147483648',
+    '-e', 'N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES=5000',
+    # Keep installed community nodes loading, which n8n 3.0 turns off by default
+    '-e', 'N8N_UNVERIFIED_PACKAGES_ENABLED=true'
 )
 # Only when ENABLE_EXEC_NODES is yes: [] loads every node, including Execute
 # Command and Local File Trigger.

@@ -32,6 +32,14 @@ When the script finishes, open http://localhost:5678 in your browser, or swap 56
 
 Everything below this point is optional. It's here for when you're curious, want to change something, or something goes wrong.
 
+## n8n 3.0 is coming
+
+n8n released the 3.0 beta on 27 October 2026, and the stable release is planned for early December. Like most major versions, 3.0 has breaking changes: some nodes are removed and some defaults change. See n8n's [3.0 breaking changes](https://docs.n8n.io/changelog/v30-breaking-changes).
+
+n8n wiz won't move you to 3.0 on its own. From version 1.1.0, the nightly update keeps you on the major version you have, so a 2.x install gets every 2.x update and stops there. When 3.0 is out and you run the script yourself, it tells you and asks before upgrading. Say no and nothing changes. n8n supports 2.x with security fixes for 12 months after 3.0 goes stable, so there's no rush.
+
+Before you say yes, open n8n, go to **Settings > Migration Report**, fix what it flags, and back up your data folder.
+
 ## About this script
 
 It installs and upgrades a self-hosted n8n community edition with external task runners. Run it once to set things up. Run it again, by hand or on a schedule, to pull the latest n8n and restart cleanly. Your workflows and credentials stay put.
@@ -78,7 +86,7 @@ Then, step by step:
 
 1. It checks that Docker is installed. If it isn't, it gives you the Docker Desktop download link and stops.
 2. It checks that Docker is running. If it isn't, it asks whether to start it, starts it, and waits up to three minutes for it to come up.
-3. It starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
+3. It checks for the newest n8n in the major version you're on (asking first if you're at the keyboard and a new major version is out), then starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
 4. The first time, or with `--reconfigure`, it shows a welcome screen, then asks eight questions, one per screen, then shows all your answers on one numbered summary screen. Type a number there to redo that question, or press Enter to save. Later runs skip this and read the saved answers.
 5. It finishes the downloads. Only then does it remove the old containers, so a failed download leaves your current n8n running.
 6. It creates the Docker network and the data and `files` folders if needed, writes `task-runners.json` to your data folder, and starts the two containers.
@@ -114,7 +122,7 @@ Made a mistake? After the last question, every answer is listed with a number. T
 
 Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
 
-The questions don't ask which n8n version to run. Every run uses `latest`, which is the point of the script.
+The questions don't ask which n8n version to run. Every run updates to the newest release in the major version you're on, which is the point of the script. Moving up a major version, such as 2.x to 3.x, always asks first.
 
 The settings file has to sit in the same folder as the script. The script only looks for it there, so if you move the script, move the settings file with it. To change your answers, run the script again with `--reconfigure` (bash) or `-Reconfigure` (PowerShell), or edit the settings file in any text editor. It's plain `NAME=value` lines.
 
@@ -125,14 +133,14 @@ If you're comfortable with code, open the script and change the values in the Se
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
 | `N8N_DATA_DIR` | 123 | 154 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 127 | 158 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 130 | 161 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 135 | 167 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 138 | 170 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 143 | 175 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 156-159 | 188-191 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 164 | 196 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 169 | 201 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_VERSION` | 129 | 160 | `latest` updates to the newest release in the major version you're on, and asks at the keyboard before a new major version. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 132 | 163 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 137 | 169 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 140 | 172 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 145 | 177 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 158-161 | 190-193 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 166 | 198 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 171 | 203 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## Options
 
@@ -197,6 +205,7 @@ Then add a Code node, set the language to Python, and run something with `import
 - If your computer already runs n8n in a container called `n8n`, set up some other way, the first run says so and asks before replacing it. It suggests that container's data folder, port and public address so your workflows carry over, and warns if the old one sets its encryption key directly. Other settings you gave the old container aren't carried over.
 - The containers the script creates carry the label `n8n-docker-task-runners=managed`, so it can tell its own n8n apart. A run with nobody at the keyboard (`--no-questions`, cron or Task Scheduler) and no settings file won't touch an n8n without that label. It stops with a message asking you to run it once by hand and decide.
 - Each script shows its version under the title, and with `--help`. Runs with nobody watching print it as their first line, so the nightly log records which version ran.
+- The script keeps the 2.x limits for the Compression node (2 GiB unzipped, 5000 files) and keeps installed community nodes loading. n8n 3.0 tightens both by default, and these settings keep zip workflows and community nodes working when you upgrade.
 - The `n8nio/runners` version has to match `n8nio/n8n`. The scripts use one version setting for both images, so they always move together.
 - Each run writes `task-runners.json` into your data folder and mounts it over the runners image's default config, which it replaces entirely. It's a copy of the 2.45.4 default with your allowlists filled in. When n8n changes its default in a later release, this copy doesn't follow, so compare it now and then with the default for the version you run. Copy from the release tag, not the `master` branch, which can be ahead of the released image.
 - By default the broker listens only on localhost. The scripts set `N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0`, because a separate container can't reach localhost.
