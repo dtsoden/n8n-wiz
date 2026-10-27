@@ -1,6 +1,6 @@
 # n8n with external task runners on Docker
 
-[![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-docker-task-runners?style=social)](https://github.com/dtsoden/n8n-docker-task-runners)
+[![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-docker-task-runners?style=social&label=Star)](https://github.com/dtsoden/n8n-docker-task-runners)
 
 One script that installs n8n on your computer and keeps it up to date, on macOS, Linux or Windows.
 
