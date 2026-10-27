@@ -22,7 +22,7 @@
 
 # =============================================================================
 # n8n wiz: install n8n and keep it up to date (Windows, PowerShell)
-# https://github.com/dtsoden/n8n-docker-task-runners
+# https://github.com/dtsoden/n8n-wiz
 # =============================================================================
 #
 # What this script does
@@ -99,15 +99,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 160  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 164  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 167  N8N_HOST_PORT       port you open in the browser
-#   Line 173  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 176  DOCKER_NETWORK      only if you already use a different network name
-#   Line 181  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 194 to 197  JS_* and PY_*  modules the Code node may import
-#   Line 202  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 207  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 154  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 158  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 161  N8N_HOST_PORT       port you open in the browser
+#   Line 167  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 170  DOCKER_NETWORK      only if you already use a different network name
+#   Line 175  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 188 to 191  JS_* and PY_*  modules the Code node may import
+#   Line 196  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 201  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
@@ -135,13 +135,7 @@ foreach ($word in $args) {
         '^(--?|/)?remove$'        { $Remove = [switch]$true }
         '^(--?|/)?reconfigure$'   { $Reconfigure = [switch]$true }
         '^(--?|/)?no-?questions$' { $NoQuestions = [switch]$true }
-        '^(--?|/)?(h|help|\?)$' {
-            Write-Host 'Options:'
-            Write-Host '  -Reconfigure   ask the setup questions again and save new answers'
-            Write-Host '  -NoQuestions   never ask; use the saved answers'
-            Write-Host '  -Remove        uninstall n8n; asks before deleting your workflows'
-            exit 0
-        }
+        '^(--?|/)?(h|help|\?)$'  { $ShowHelp = $true }
         default {
             Write-Host "I don't recognize this option: $word" -ForegroundColor Red
             Write-Host 'The options are -Reconfigure, -NoQuestions and -Remove.'
@@ -207,7 +201,19 @@ $S = [ordered]@{
     NIGHTLY_TIME      = '02:00'
 }
 
+# Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
+$ScriptVersion = '1.0.0'
+
 # ---- Nothing below this line needs editing ----------------------------------
+
+if ($ShowHelp) {
+    Write-Host "n8n-setup-windows.ps1 version $ScriptVersion"
+    Write-Host 'Options:'
+    Write-Host '  -Reconfigure   ask the setup questions again and save new answers'
+    Write-Host '  -NoQuestions   never ask; use the saved answers'
+    Write-Host '  -Remove        uninstall n8n; asks before deleting your workflows'
+    exit 0
+}
 
 # The settings file lives next to this script, wherever it is run from.
 $SettingsFile = Join-Path $PSScriptRoot 'n8n-docker-task-runners-settings.env'
@@ -222,7 +228,7 @@ if ($NoQuestions) {
 function Stop-Script {
     Write-Host ''
     Write-Host 'If this looks like a bug, please report it at' -ForegroundColor Yellow
-    Write-Host 'https://github.com/dtsoden/n8n-docker-task-runners/issues/new' -ForegroundColor Yellow
+    Write-Host 'https://github.com/dtsoden/n8n-wiz/issues/new' -ForegroundColor Yellow
     exit 1
 }
 
@@ -429,12 +435,15 @@ function Show-List([string]$List, [string]$Where) {
 # through. An empty $List skips that check.
 function Read-Names([string]$Name, [string]$Question, [string]$List) {
     $known = $List.Split(',')
+    # A rejected answer must not become the next suggestion.
+    $prev = $S[$Name]
     while ($true) {
         Ask $Name $Question
         if ($List -eq '') { return }
         $bad = @($S[$Name].Split(',') | Where-Object { $_ -ne '' -and $_ -ne '*' -and $known -notcontains $_ })
         if ($bad.Count -eq 0) { return }
         Write-Host "  Not in the list: $($bad -join ', '). Check the spelling against the list above." -ForegroundColor Yellow
+        $S[$Name] = $prev
     }
 }
 
@@ -450,6 +459,7 @@ function Show-Banner {
 | $$  | $$|  $$$$$$/| $$  | $$      |  $$$$$/$$$$/| $$ /$$$$$$$$
 |__/  |__/ \______/ |__/  |__/       \_____/\___/ |__/|________/
 '@ -ForegroundColor Cyan
+    Write-Host "  version $ScriptVersion" -ForegroundColor DarkGray
 }
 
 # Clears the screen so each question stands on its own instead of scrolling
@@ -657,6 +667,9 @@ $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedire
 if ($interactive -and -not $NoQuestions) {
     Show-Banner
     Write-Host ''
+} else {
+    # The nightly log still records which version ran.
+    Write-Host "n8n-setup-windows.ps1 version $ScriptVersion, $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
 }
 
 if ($Reconfigure -and -not $interactive) {
@@ -803,6 +816,15 @@ function Wait-RunnersImage {
 # On a first run, an existing "n8n" container was set up by something else,
 # and this script would replace it. Say so, ask first, and suggest that
 # container's data folder, port and public address so nothing gets lost.
+# Containers this script starts carry this label, so it can tell its own n8n
+# from one set up some other way.
+$OurLabel = 'n8n-docker-task-runners=managed'
+
+function Test-OurN8n {
+    $c = @((& docker container inspect n8n 2>$null) | Out-String | ConvertFrom-Json)[0]
+    return ($c -and $c.Config.Labels -and $c.Config.Labels.'n8n-docker-task-runners' -eq 'managed')
+}
+
 # docker inspect's JSON is read instead of a --format template, because
 # Windows PowerShell 5.1 mangles the double quotes a template needs.
 
@@ -868,6 +890,16 @@ if ($Reconfigure) {
 } elseif (Test-Path -LiteralPath $SettingsFile) {
     Write-Host "Using settings from $SettingsFile"
 } elseif ($NoQuestions -or -not $interactive) {
+    # Nobody is here to answer the question Use-ExistingN8n asks, so an n8n
+    # this script didn't create is left alone rather than replaced. This is a
+    # deliberate stop, so it skips the bug-report link.
+    & docker container inspect n8n *> $null
+    if ($LASTEXITCODE -eq 0 -and -not (Test-OurN8n)) {
+        Write-Host "There's an n8n on this computer that this script didn't set up, and" -ForegroundColor Red
+        Write-Host "there's no settings file next to the script, so nothing was changed." -ForegroundColor Red
+        Write-Host 'Run the script once without -NoQuestions to decide what to do with it.'
+        exit 1
+    }
     Write-Host 'No settings file next to the script; using the values written in it.'
 } else {
     Use-ExistingN8n
@@ -1048,6 +1080,7 @@ Write-Host 'Starting n8n...'
 $n8nArgs = @(
     'run', '-d',
     '--name', 'n8n',
+    '--label', $OurLabel,
     '--restart', 'always',
     '--network', $network,
     # n8n listens on 5678 inside the container
@@ -1086,6 +1119,7 @@ Write-Host 'Starting n8n-runners...'
 $runnerArgs = @(
     'run', '-d',
     '--name', 'n8n-runners',
+    '--label', $OurLabel,
     '--restart', 'always',
     '--network', $network,
     '-e', "N8N_RUNNERS_AUTH_TOKEN=$RunnersAuthToken",
@@ -1140,5 +1174,5 @@ if ($interactive -and -not $NoQuestions) {
     Write-Host ''
     Write-Host 'If this saved you some time, please give it a star on GitHub. Stars are' -ForegroundColor Cyan
     Write-Host 'how other n8n users find it. The Star button is at the top right of:' -ForegroundColor Cyan
-    Write-Host 'https://github.com/dtsoden/n8n-docker-task-runners' -ForegroundColor Cyan
+    Write-Host 'https://github.com/dtsoden/n8n-wiz' -ForegroundColor Cyan
 }

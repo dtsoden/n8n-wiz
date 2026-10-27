@@ -1,6 +1,6 @@
 # n8n wiz: install n8n and keep it up to date with one file
 
-[![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-docker-task-runners?style=social&label=Star)](https://github.com/dtsoden/n8n-docker-task-runners)
+[![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-wiz?style=social&label=Star)](https://github.com/dtsoden/n8n-wiz)
 
 One script that installs n8n on your computer and keeps it up to date, on macOS, Linux or Windows.
 
@@ -12,7 +12,7 @@ On a Mac or Linux, open Terminal and paste this:
 
 ```bash
 mkdir -p ~/n8n-setup && cd ~/n8n-setup
-curl -fsSLO https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-mac-linux.sh
+curl -fsSLO https://raw.githubusercontent.com/dtsoden/n8n-wiz/main/n8n-setup-mac-linux.sh
 bash n8n-setup-mac-linux.sh
 ```
 
@@ -20,11 +20,11 @@ On Windows, open PowerShell and paste this:
 
 ```powershell
 mkdir $HOME\n8n-setup -Force; cd $HOME\n8n-setup
-Invoke-WebRequest https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-windows.ps1 -OutFile n8n-setup-windows.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/dtsoden/n8n-wiz/main/n8n-setup-windows.ps1 -OutFile n8n-setup-windows.ps1
 powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
 ```
 
-If you'd rather click than paste, download [n8n-setup-mac-linux.sh](https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-mac-linux.sh) or [n8n-setup-windows.ps1](https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-windows.ps1) (right-click and choose Save link as), put it in a folder of its own, and run it from there. The script saves your answers next to itself, which is why it gets its own folder.
+If you'd rather click than paste, download [n8n-setup-mac-linux.sh](https://raw.githubusercontent.com/dtsoden/n8n-wiz/main/n8n-setup-mac-linux.sh) or [n8n-setup-windows.ps1](https://raw.githubusercontent.com/dtsoden/n8n-wiz/main/n8n-setup-windows.ps1) (right-click and choose Save link as), put it in a folder of its own, and run it from there. The script saves your answers next to itself, which is why it gets its own folder.
 
 You'll need Docker Desktop. If it isn't installed, the script tells you where to get it, and if it isn't running, the script offers to start it.
 
@@ -124,15 +124,15 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 123 | 160 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 127 | 164 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 130 | 167 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 135 | 173 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 138 | 176 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 143 | 181 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 156-159 | 194-197 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 164 | 202 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 169 | 207 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_DATA_DIR` | 123 | 154 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 127 | 158 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 130 | 161 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 135 | 167 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 138 | 170 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 143 | 175 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 156-159 | 188-191 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 164 | 196 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 169 | 201 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## Options
 
@@ -179,7 +179,7 @@ Your workflows, credentials and files are a separate question. They stay unless 
 
 ## Found a bug?
 
-If the script stops with an error, it ends with a link to report it. You can also open an issue directly at https://github.com/dtsoden/n8n-docker-task-runners/issues/new. Include the last lines the script printed and which operating system you're on.
+If the script stops with an error, it ends with a link to report it. You can also open an issue directly at https://github.com/dtsoden/n8n-wiz/issues/new. Include the last lines the script printed and which operating system you're on.
 
 ## Checking it worked
 
@@ -195,6 +195,8 @@ Then add a Code node, set the language to Python, and run something with `import
 ## Things worth knowing
 
 - If your computer already runs n8n in a container called `n8n`, set up some other way, the first run says so and asks before replacing it. It suggests that container's data folder, port and public address so your workflows carry over, and warns if the old one sets its encryption key directly. Other settings you gave the old container aren't carried over.
+- The containers the script creates carry the label `n8n-docker-task-runners=managed`, so it can tell its own n8n apart. A run with nobody at the keyboard (`--no-questions`, cron or Task Scheduler) and no settings file won't touch an n8n without that label. It stops with a message asking you to run it once by hand and decide.
+- Each script shows its version under the title, and with `--help`. Runs with nobody watching print it as their first line, so the nightly log records which version ran.
 - The `n8nio/runners` version has to match `n8nio/n8n`. The scripts use one version setting for both images, so they always move together.
 - Each run writes `task-runners.json` into your data folder and mounts it over the runners image's default config, which it replaces entirely. It's a copy of the 2.45.4 default with your allowlists filled in. When n8n changes its default in a later release, this copy doesn't follow, so compare it now and then with the default for the version you run. Copy from the release tag, not the `master` branch, which can be ahead of the released image.
 - By default the broker listens only on localhost. The scripts set `N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0`, because a separate container can't reach localhost.

@@ -23,7 +23,7 @@
 
 # =============================================================================
 # n8n wiz: install n8n and keep it up to date (macOS and Linux)
-# https://github.com/dtsoden/n8n-docker-task-runners
+# https://github.com/dtsoden/n8n-wiz
 # =============================================================================
 #
 # What this script does
@@ -197,7 +197,7 @@ trap 'status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 130 ] && [ "${NOT_A_BUG:-}" != yes ]; then
   echo
   echo "${C_WARN}If this looks like a bug, please report it at${C_OFF}"
-  echo "${C_WARN}https://github.com/dtsoden/n8n-docker-task-runners/issues/new${C_OFF}"
+  echo "${C_WARN}https://github.com/dtsoden/n8n-wiz/issues/new${C_OFF}"
 fi' EXIT
 
 # The cron entry for the nightly update is found again by this tag at the end
@@ -1186,5 +1186,5 @@ if [ -t 0 ]; then
   echo
   echo "${C_STAR}If this saved you some time, please give it a star on GitHub. Stars are${C_OFF}"
   echo "${C_STAR}how other n8n users find it. The Star button is at the top right of:${C_OFF}"
-  echo "${C_STAR}https://github.com/dtsoden/n8n-docker-task-runners${C_OFF}"
+  echo "${C_STAR}https://github.com/dtsoden/n8n-wiz${C_OFF}"
 fi
