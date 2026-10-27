@@ -410,15 +410,20 @@ function Show-NewScreen([string]$Title) {
     try { Clear-Host } catch { Write-Host "" }
     Write-Host "Setting up n8n: $Title"
     Write-Host "If you're not sure, press Enter to take the suggested answer."
+    Write-Host 'Made a mistake? You can change any answer on the summary screen at the end.'
 }
 
-function Invoke-Questions {
+function Invoke-Question1 {
     Show-NewScreen 'question 1 of 8'
     Ask 'N8N_DATA_DIR' 'Where should n8n keep its workflows, credentials and other data?'
+}
 
+function Invoke-Question2 {
     Show-NewScreen 'question 2 of 8'
     Ask 'N8N_HOST_PORT' "Which port number should n8n use? If you don't know what that means, just press Enter."
+}
 
+function Invoke-Question3 {
     Show-NewScreen 'question 3 of 8'
     $hasUrl = if ($S.N8N_WEBHOOK_URL -ne '') { 'y' } else { 'n' }
     if (Ask-YesNo "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." $hasUrl) {
@@ -430,10 +435,14 @@ function Invoke-Questions {
     } else {
         $S.N8N_WEBHOOK_URL = ''
     }
+}
 
+function Invoke-Question4 {
     Show-NewScreen 'question 4 of 8'
     Ask 'TASK_TIMEOUT' "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(Show-Seconds $S.TASK_TIMEOUT). For 10 minutes, type 600."
+}
 
+function Invoke-Question5 {
     Show-NewScreen 'question 5 of 8'
     Write-Host ''
     Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on'
@@ -468,8 +477,11 @@ function Invoke-Questions {
         }
     }
 
-    # Python's extra packages in the image are only the runner's own plumbing,
-    # so they follow the standard library answer instead of getting a question.
+}
+
+# Python's extra packages in the image are only the runner's own plumbing,
+# so they follow the standard library answer instead of getting a question.
+function Invoke-Question6 {
     Show-NewScreen 'question 6 of 8'
     Write-Host ''
     Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on'
@@ -498,14 +510,18 @@ function Invoke-Questions {
             $S.PY_EXTERNAL_ALLOW = ''
         }
     }
+}
 
+function Invoke-Question7 {
     Show-NewScreen 'question 7 of 8'
     Write-Host ''
     Write-Host 'n8n 2.0 and later switch off two nodes that can run commands and read'
     Write-Host 'files on this computer: Execute Command and Local File Trigger.'
     $execDefault = if ($S.ENABLE_EXEC_NODES -eq 'yes') { 'y' } else { 'n' }
     $S.ENABLE_EXEC_NODES = if (Ask-YesNo 'Do you want them switched back on?' $execDefault) { 'yes' } else { 'no' }
+}
 
+function Invoke-Question8 {
     Show-NewScreen 'question 8 of 8'
     $nightlyDefault = if ($S.NIGHTLY_TIME -eq 'off') { 'n' } else { 'y' }
     if (Ask-YesNo 'Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on and you need to be signed in at that time.' $nightlyDefault) {
@@ -523,30 +539,41 @@ function Invoke-Questions {
     } else {
         $S.NIGHTLY_TIME = 'off'
     }
-    $script:AskedQuestions = $true
+}
 
-    try { Clear-Host } catch { Write-Host "" }
-    Write-Host 'Setting up n8n: check your answers'
-    Write-Host 'You can change any of this later by running the script with -Reconfigure.'
-    Write-Host ''
-    Write-Host "Here's what you chose:"
-    Write-Host "  Data folder:                    $($S.N8N_DATA_DIR)"
-    Write-Host "  Port:                           $($S.N8N_HOST_PORT)"
-    Write-Host "  Internet address:               $(if ($S.N8N_WEBHOOK_URL) { $S.N8N_WEBHOOK_URL } else { 'none, this computer only' })"
-    Write-Host "  Code node time limit:           $(Show-Seconds $S.TASK_TIMEOUT)"
-    Write-Host "  JavaScript built-in libraries:  $(Show-Value $S.JS_BUILTIN_ALLOW)"
-    Write-Host "  JavaScript npm packages:        $(Show-Value $S.JS_EXTERNAL_ALLOW)"
-    Write-Host "  Python libraries:               $(Show-Value $S.PY_STDLIB_ALLOW)"
-    Write-Host "  Execute Command and Local File: $($S.ENABLE_EXEC_NODES)"
-    if ($S.NIGHTLY_TIME -eq 'off') {
-        Write-Host '  Nightly update:                 off'
-    } else {
-        Write-Host "  Nightly update:                 every night at $(Show-Time $S.NIGHTLY_TIME)"
+# Every answer on one numbered screen. Typing a number shows that question
+# again, so a mistake is easy to fix before anything is saved.
+function Invoke-Questions {
+    foreach ($n in 1..8) { & "Invoke-Question$n" }
+    $note = ''
+    while ($true) {
+        try { Clear-Host } catch { Write-Host '' }
+        Write-Host 'Setting up n8n: check your answers'
+        Write-Host ''
+        Write-Host "  1  Data folder:                    $($S.N8N_DATA_DIR)"
+        Write-Host "  2  Port:                           $($S.N8N_HOST_PORT)"
+        Write-Host "  3  Internet address:               $(if ($S.N8N_WEBHOOK_URL) { $S.N8N_WEBHOOK_URL } else { 'none, this computer only' })"
+        Write-Host "  4  Code node time limit:           $(Show-Seconds $S.TASK_TIMEOUT)"
+        Write-Host "  5  JavaScript built-in libraries:  $(Show-Value $S.JS_BUILTIN_ALLOW)"
+        Write-Host "     JavaScript npm packages:        $(Show-Value $S.JS_EXTERNAL_ALLOW)"
+        Write-Host "  6  Python libraries:               $(Show-Value $S.PY_STDLIB_ALLOW)"
+        Write-Host "  7  Execute Command and Local File: $($S.ENABLE_EXEC_NODES)"
+        if ($S.NIGHTLY_TIME -eq 'off') {
+            Write-Host '  8  Nightly update:                 off'
+        } else {
+            Write-Host "  8  Nightly update:                 every night at $(Show-Time $S.NIGHTLY_TIME)"
+        }
+        Write-Host ''
+        Write-Host 'You can also change any of this later by running the script with -Reconfigure.'
+        Write-Host 'To quit without saving anything, press Ctrl+C.'
+        if ($note) { Write-Host ''; Write-Host "  $note" -ForegroundColor Yellow; $note = '' }
+        Write-Host ''
+        $answer = Read-Host '  Press Enter to save and start n8n, or type a number to change that answer'
+        if ([string]::IsNullOrEmpty($answer)) { break }
+        if ($answer -match '^[1-8]$') { & "Invoke-Question$answer" }
+        else { $note = 'Please press Enter, or type a number from 1 to 8.' }
     }
-    if (-not (Ask-YesNo "Does that look right? I'll save it and start n8n." 'y')) {
-        Write-Host "OK, nothing was changed. Run the script again when you're ready."
-        exit 0
-    }
+    $script:AskedQuestions = $true
     Save-SettingsFile
 }
 
@@ -888,6 +915,9 @@ if ($script:AskedQuestions) {
 
 # Only when someone is watching, so the nightly log stays quiet.
 if ($interactive -and -not $NoQuestions) {
+    Write-Host ''
+    Write-Host 'Want to change an answer later? Run this script again like this:'
+    Write-Host "  powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Reconfigure"
     Write-Host ''
     Write-Host 'If this saved you some time, please give it a star on GitHub. Stars are' -ForegroundColor Cyan
     Write-Host 'how other n8n users find it. The Star button is at the top right of:' -ForegroundColor Cyan

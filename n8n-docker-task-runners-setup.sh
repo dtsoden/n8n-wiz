@@ -431,18 +431,23 @@ pick_names() {
 # new_screen "question 1 of 8": clears the screen so each question stands on
 # its own instead of scrolling under the ones before it.
 new_screen() {
-  clear 2>/dev/null || printf '[2J[H'
+  clear 2>/dev/null || printf '\033[2J\033[H'
   echo "Setting up n8n: $1"
   echo "If you're not sure, press Enter to take the suggested answer."
+  echo "Made a mistake? You can change any answer on the summary screen at the end."
 }
 
-run_questions() {
+question_1() {
   new_screen "question 1 of 8"
   ask N8N_DATA_DIR "Where should n8n keep its workflows, credentials and other data?"
+}
 
+question_2() {
   new_screen "question 2 of 8"
   ask N8N_HOST_PORT "Which port number should n8n use? If you don't know what that means, just press Enter."
+}
 
+question_3() {
   new_screen "question 3 of 8"
   local has_url=n
   [ -n "$N8N_WEBHOOK_URL" ] && has_url=y
@@ -455,10 +460,14 @@ run_questions() {
   else
     N8N_WEBHOOK_URL=""
   fi
+}
 
+question_4() {
   new_screen "question 4 of 8"
   ask TASK_TIMEOUT "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(show_seconds "$TASK_TIMEOUT"). For 10 minutes, type 600."
+}
 
+question_5() {
   new_screen "question 5 of 8"
   echo
   echo "Allowing everything is easiest, but it also lets a Code node do more on"
@@ -495,8 +504,11 @@ run_questions() {
       ;;
   esac
 
-  # Python's extra packages in the image are only the runner's own plumbing,
-  # so they follow the standard library answer instead of getting a question.
+}
+
+# Python's extra packages in the image are only the runner's own plumbing,
+# so they follow the standard library answer instead of getting a question.
+question_6() {
   new_screen "question 6 of 8"
   echo
   echo "Allowing everything is easiest, but it also lets a Code node do more on"
@@ -527,7 +539,9 @@ run_questions() {
       PY_EXTERNAL_ALLOW=""
       ;;
   esac
+}
 
+question_7() {
   new_screen "question 7 of 8"
   echo
   echo "n8n 2.0 and later switch off two nodes that can run commands and read"
@@ -539,7 +553,9 @@ run_questions() {
   else
     ENABLE_EXEC_NODES=no
   fi
+}
 
+question_8() {
   new_screen "question 8 of 8"
   local nightly_default=y answer t
   [ "$NIGHTLY_TIME" = off ] && nightly_default=n
@@ -560,30 +576,43 @@ run_questions() {
   else
     NIGHTLY_TIME=off
   fi
-  ASKED_QUESTIONS=yes
+}
 
-  clear 2>/dev/null || printf '[2J[H'
-  echo "Setting up n8n: check your answers"
-  echo "You can change any of this later by running the script with --reconfigure."
-  echo
-  echo "Here's what you chose:"
-  echo "  Data folder:                    $N8N_DATA_DIR"
-  echo "  Port:                           $N8N_HOST_PORT"
-  echo "  Internet address:               ${N8N_WEBHOOK_URL:-none, this computer only}"
-  echo "  Code node time limit:           $(show_seconds "$TASK_TIMEOUT")"
-  echo "  JavaScript built-in libraries:  $(show_value "$JS_BUILTIN_ALLOW")"
-  echo "  JavaScript npm packages:        $(show_value "$JS_EXTERNAL_ALLOW")"
-  echo "  Python libraries:               $(show_value "$PY_STDLIB_ALLOW")"
-  echo "  Execute Command and Local File: $ENABLE_EXEC_NODES"
-  if [ "$NIGHTLY_TIME" = off ]; then
-    echo "  Nightly update:                 off"
-  else
-    echo "  Nightly update:                 every night at $(show_time "$NIGHTLY_TIME")"
-  fi
-  if ! ask_yes_no "Does that look right? I'll save it and start n8n." y; then
-    echo "OK, nothing was changed. Run the script again when you're ready."
-    exit 0
-  fi
+# Every answer on one numbered screen. Typing a number shows that question
+# again, so a mistake is easy to fix before anything is saved.
+run_questions() {
+  local n answer note=""
+  for n in 1 2 3 4 5 6 7 8; do "question_$n"; done
+  while true; do
+    clear 2>/dev/null || printf '\033[2J\033[H'
+    echo "Setting up n8n: check your answers"
+    echo
+    echo "  1  Data folder:                    $N8N_DATA_DIR"
+    echo "  2  Port:                           $N8N_HOST_PORT"
+    echo "  3  Internet address:               ${N8N_WEBHOOK_URL:-none, this computer only}"
+    echo "  4  Code node time limit:           $(show_seconds "$TASK_TIMEOUT")"
+    echo "  5  JavaScript built-in libraries:  $(show_value "$JS_BUILTIN_ALLOW")"
+    echo "     JavaScript npm packages:        $(show_value "$JS_EXTERNAL_ALLOW")"
+    echo "  6  Python libraries:               $(show_value "$PY_STDLIB_ALLOW")"
+    echo "  7  Execute Command and Local File: $ENABLE_EXEC_NODES"
+    if [ "$NIGHTLY_TIME" = off ]; then
+      echo "  8  Nightly update:                 off"
+    else
+      echo "  8  Nightly update:                 every night at $(show_time "$NIGHTLY_TIME")"
+    fi
+    echo
+    echo "You can also change any of this later by running the script with --reconfigure."
+    echo "To quit without saving anything, press Ctrl+C."
+    if [ -n "$note" ]; then echo; echo "  $note"; note=""; fi
+    echo
+    read -r -p "  Press Enter to save and start n8n, or type a number to change that answer: " answer || answer=""
+    case "$answer" in
+      "") break ;;
+      [1-8]) "question_$answer" ;;
+      *) note="Please press Enter, or type a number from 1 to 8." ;;
+    esac
+  done
+  ASKED_QUESTIONS=yes
   save_settings
 }
 
@@ -906,6 +935,9 @@ fi
 
 # Only when someone is watching, so the nightly log stays quiet.
 if [ -t 0 ]; then
+  echo
+  echo "Want to change an answer later? Run this script again like this:"
+  echo "  $0 --reconfigure"
   echo
   echo "If this saved you some time, please give it a star on GitHub. Stars are"
   echo "how other n8n users find it. The Star button is at the top right of:"

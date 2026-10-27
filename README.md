@@ -51,7 +51,7 @@ Then open http://localhost:5678 (or the port you chose).
 1. It checks that Docker is installed. If it isn't, it gives you the Docker Desktop download link and stops.
 2. It checks that Docker is running. If it isn't, it asks whether to start it, starts it, and waits up to three minutes for it to come up.
 3. It starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
-4. The first time, or with `--reconfigure`, it asks eight questions, one per screen, then shows all your answers on one screen to confirm before saving them. Later runs skip this and read the saved answers.
+4. The first time, or with `--reconfigure`, it asks eight questions, one per screen, then shows all your answers on one numbered summary screen. Type a number there to redo that question, or press Enter to save. Later runs skip this and read the saved answers.
 5. It finishes the downloads. Only then does it remove the old containers, so a failed download leaves your current n8n running.
 6. It creates the Docker network if needed, writes `task-runners.json` to your data folder, and starts the two containers.
 7. If you answered the questions, it sets up or removes the nightly schedule to match.
@@ -79,6 +79,8 @@ Run the script. The first time, it asks eight questions, each on its own screen 
 The two library questions are menus: everything that comes installed, a short common set, none, or your own pick. If you pick your own, the script reads the full list from the runners image you're about to run and shows it so you can copy names. It turns down any name that isn't on the list, so a typo can't slip through.
 
 Times can be typed the way you'd say them: `2am`, `2:30pm`, `11pm` or `23:00` all work.
+
+Made a mistake? After the last question, every answer is listed with a number. Type a number to redo that question, as often as you like, then press Enter to save. Press Ctrl+C on that screen to quit without saving anything. Once it's saved, run the script again with `--reconfigure` (bash) or `-Reconfigure` (PowerShell) to change anything later. The script reminds you of that command when it finishes.
 
 Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
 
