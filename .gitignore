@@ -2,8 +2,5 @@
 # they stay on your machine.
 n8n-docker-task-runners-settings.env
 
-# Drafts for forum and chat posts
-_posts/
-
-# Personal files that never get published
+# Personal files and post drafts that never get published
 _private/
