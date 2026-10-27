@@ -559,8 +559,20 @@ question_6() {
 question_7() {
   new_screen "question 7 of 8, Execute Command and Local File Trigger"
   echo
-  echo "n8n 2.0 and later switch off two nodes that can run commands and read"
-  echo "files on this computer: Execute Command and Local File Trigger."
+  echo "n8n 2.0 and later switch off two nodes for safety:"
+  echo
+  echo "  Execute Command     runs any command you give it, such as a script or a"
+  echo "                      program. It runs inside n8n's Docker container."
+  echo "  Local File Trigger  starts a workflow when a file or folder changes."
+  echo
+  echo "If you say no, workflows that use either of these two nodes stop working."
+  echo "Everything else keeps working, including Read/Write Files from Disk,"
+  echo "Compression (zip and unzip), and Convert to File / Extract from File."
+  echo
+  echo "If you say yes, anyone who can edit workflows on this n8n can run any"
+  echo "command inside its container, which holds your saved credentials and the"
+  echo "key that unlocks them. If you're the only person using this n8n, that"
+  echo "risk is small. If you use Execute Command today, say yes."
   local exec_default=n
   [ "$ENABLE_EXEC_NODES" = yes ] && exec_default=y
   if ask_yes_no "Do you want them switched back on?" "$exec_default"; then

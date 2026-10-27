@@ -515,8 +515,20 @@ function Invoke-Question6 {
 function Invoke-Question7 {
     Show-NewScreen 'question 7 of 8, Execute Command and Local File Trigger'
     Write-Host ''
-    Write-Host 'n8n 2.0 and later switch off two nodes that can run commands and read'
-    Write-Host 'files on this computer: Execute Command and Local File Trigger.'
+    Write-Host 'n8n 2.0 and later switch off two nodes for safety:'
+    Write-Host ''
+    Write-Host '  Execute Command     runs any command you give it, such as a script or a'
+    Write-Host "                      program. It runs inside n8n's Docker container."
+    Write-Host '  Local File Trigger  starts a workflow when a file or folder changes.'
+    Write-Host ''
+    Write-Host 'If you say no, workflows that use either of these two nodes stop working.'
+    Write-Host 'Everything else keeps working, including Read/Write Files from Disk,'
+    Write-Host 'Compression (zip and unzip), and Convert to File / Extract from File.'
+    Write-Host ''
+    Write-Host 'If you say yes, anyone who can edit workflows on this n8n can run any'
+    Write-Host 'command inside its container, which holds your saved credentials and the'
+    Write-Host "key that unlocks them. If you're the only person using this n8n, that"
+    Write-Host 'risk is small. If you use Execute Command today, say yes.'
     $execDefault = if ($S.ENABLE_EXEC_NODES -eq 'yes') { 'y' } else { 'n' }
     $S.ENABLE_EXEC_NODES = if (Ask-YesNo 'Do you want them switched back on?' $execDefault) { 'yes' } else { 'no' }
 }
