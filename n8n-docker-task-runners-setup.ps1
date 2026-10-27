@@ -64,6 +64,8 @@
 #   -NoQuestions    never ask; use the settings file if there is one,
 #                   otherwise the values written in this script. Use this for
 #                   Task Scheduler.
+#   -Remove         uninstall: remove n8n, its images, the nightly update and
+#                   the saved answers. Asks before deleting your workflows.
 #
 # Provided as is, as a convenience. I have run this script nightly for over a
 # year to keep a community edition instance current. Read the docs below and
@@ -90,15 +92,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 126  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 130  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 133  N8N_HOST_PORT       port you open in the browser
-#   Line 139  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 142  DOCKER_NETWORK      only if you already use a different network name
-#   Line 147  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 160 to 163  JS_* and PY_*  modules the Code node may import
-#   Line 168  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 173  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 129  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 133  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 136  N8N_HOST_PORT       port you open in the browser
+#   Line 142  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 145  DOCKER_NETWORK      only if you already use a different network name
+#   Line 150  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 163 to 166  JS_* and PY_*  modules the Code node may import
+#   Line 171  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 176  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-docker-task-runners-setup.ps1
@@ -113,7 +115,8 @@
 
 param(
     [switch]$Reconfigure,
-    [switch]$NoQuestions
+    [switch]$NoQuestions,
+    [switch]$Remove
 )
 
 # ---- Settings ---------------------------------------------------------------
@@ -646,6 +649,81 @@ if (-not (Test-DockerRunning)) {
     }
     Write-Host ' Docker is running.' -ForegroundColor Green
 }
+
+# ---- Uninstall (-Remove) ----------------------------------------------------
+# Takes away everything this script set up. Your workflows and credentials are
+# a separate question, and deleting them means typing the word "delete", so a
+# stray Enter can't wipe them.
+
+function Invoke-Remove {
+    if (-not $interactive) {
+        Write-Host '-Remove needs someone at the keyboard to confirm.' -ForegroundColor Red
+        exit 1
+    }
+    try { Clear-Host } catch { Write-Host '' }
+    Write-Host 'Removing n8n from this computer' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host 'This will:'
+    Write-Host '  - stop and delete the n8n and n8n-runners containers'
+    Write-Host "  - delete the $($S.DOCKER_NETWORK) Docker network"
+    Write-Host '  - delete the downloaded n8n and n8n runners images'
+    Write-Host '  - turn off the nightly update'
+    Write-Host '  - delete your saved answers and the nightly log next to this script'
+    Write-Host ''
+    Write-Host "Your workflows, credentials and files in $($S.N8N_DATA_DIR) are kept"
+    Write-Host 'unless you choose otherwise on the next question.'
+    if (-not (Ask-YesNo 'Remove n8n?' 'n')) {
+        Write-Host 'OK, nothing was removed.'
+        exit 0
+    }
+
+    $deleteData = $false
+    $dataDir = $S.N8N_DATA_DIR
+    if ((Test-Path -LiteralPath $dataDir) -and $dataDir.TrimEnd('\') -ne $env:USERPROFILE.TrimEnd('\') -and $dataDir.Length -gt 3) {
+        Write-Host ''
+        Write-Host "Do you also want to delete ${dataDir}?" -ForegroundColor Red
+        Write-Host "That's every workflow, credential and file n8n has. It can't be undone."
+        $answer = Read-Host '  Type delete to delete it, or press Enter to keep it'
+        $deleteData = ($answer -eq 'delete')
+    }
+
+    Write-Host ''
+    Write-Host 'Removing the containers...'
+    foreach ($name in @('n8n', 'n8n-runners')) {
+        $id = & docker ps -aq --filter "name=^$name$"
+        if ($id) { & docker rm -f $name *> $null }
+    }
+    Write-Host 'Removing the network...'
+    $net = & docker network ls -q --filter "name=^$($S.DOCKER_NETWORK)$"
+    if ($net) { & docker network rm $S.DOCKER_NETWORK *> $null }
+    Write-Host 'Removing the images...'
+    $images = @(& docker images -q n8nio/n8n) + @(& docker images -q n8nio/runners) | Where-Object { $_ }
+    if ($images) { & docker rmi -f @($images | Select-Object -Unique) *> $null }
+    if (Get-ScheduledTask -TaskName 'n8n nightly update' -ErrorAction SilentlyContinue) {
+        Write-Host 'Turning off the nightly update...'
+        Unregister-ScheduledTask -TaskName 'n8n nightly update' -Confirm:$false
+    }
+    Write-Host 'Removing the saved answers and the nightly log...'
+    Remove-Item -LiteralPath $SettingsFile, (Join-Path $PSScriptRoot 'n8n-nightly.log') -Force -ErrorAction SilentlyContinue
+
+    Write-Host ''
+    if ($deleteData) {
+        Remove-Item -LiteralPath $dataDir -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $dataDir) {
+            Write-Host "Some files in $dataDir couldn't be deleted. Close anything using them and delete the folder yourself." -ForegroundColor Yellow
+        } else {
+            Write-Host "Deleted $dataDir."
+        }
+    } else {
+        Write-Host "Your workflows, credentials and files are still in $dataDir."
+        Write-Host 'Run this script again any time to bring n8n back with them.'
+    }
+    Write-Host 'n8n has been removed.' -ForegroundColor Green
+    Write-Host "This script is still here; delete its folder if you don't need it anymore."
+    exit 0
+}
+
+if ($Remove) { Invoke-Remove }
 
 # Start downloading both images now, so they're ready or nearly ready by the
 # time the questions are done. The pull step further down waits for them.

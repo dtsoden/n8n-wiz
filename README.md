@@ -100,15 +100,15 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 114 | 126 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 118 | 130 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 121 | 133 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 126 | 139 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 129 | 142 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 134 | 147 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 147-150 | 160-163 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 155 | 168 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 160 | 173 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_DATA_DIR` | 116 | 129 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 120 | 133 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 123 | 136 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 128 | 142 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 131 | 145 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 136 | 150 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 149-152 | 163-166 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 157 | 171 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 162 | 176 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## A word on the wildcards
 
@@ -133,6 +133,12 @@ schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -W
 ```
 
 `--no-questions` and `-NoQuestions` make sure a scheduled run never sits waiting for an answer. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.
+
+## Removing it
+
+Run the script with `--remove` (bash) or `-Remove` (PowerShell). It tells you what it's about to do and asks first. Then it removes the two containers, the Docker network, the n8n images, the nightly update, the saved answers and the nightly log.
+
+Your workflows, credentials and files are a separate question. They stay unless you type `delete` when asked, so pressing Enter by mistake can't wipe them. If you keep them, running the script again later brings n8n back with everything in place.
 
 ## Found a bug?
 

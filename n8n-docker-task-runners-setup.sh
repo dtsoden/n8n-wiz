@@ -58,6 +58,8 @@
 #   --reconfigure    ask the questions again and save new answers
 #   --no-questions   never ask; use the settings file if there is one,
 #                    otherwise the values written in this script
+#   --remove         uninstall: remove n8n, its images, the nightly update and
+#                    the saved answers. Asks before deleting your workflows.
 #   --help           show these options
 #
 # Provided as is, as a convenience. I have run this script nightly for over a
@@ -86,15 +88,15 @@
 #   and the script falls back to /dev/urandom if it is missing.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 114  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 118  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 121  N8N_HOST_PORT       port you open in the browser
-#   Line 126  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 129  DOCKER_NETWORK      only if you already use a different network name
-#   Line 134  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 147 to 150  JS_* and PY_*  modules the Code node may import
-#   Line 155  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 160  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 116  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 120  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 123  N8N_HOST_PORT       port you open in the browser
+#   Line 128  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 131  DOCKER_NETWORK      only if you already use a different network name
+#   Line 136  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 149 to 152  JS_* and PY_*  modules the Code node may import
+#   Line 157  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 162  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run
 #   chmod +x n8n-docker-task-runners-setup.sh
@@ -186,6 +188,10 @@ if [ "$status" -ne 0 ]; then
   echo "${C_WARN}https://github.com/dtsoden/n8n-docker-task-runners/issues/new${C_OFF}"
 fi' EXIT
 
+# The cron entry for the nightly update is found again by this tag at the end
+# of its line.
+CRON_TAG="# n8n-docker-task-runners nightly update"
+
 # The settings file lives next to this script, wherever the script is run from.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETTINGS_FILE="$SCRIPT_DIR/n8n-docker-task-runners-settings.env"
@@ -193,15 +199,19 @@ SETTING_NAMES="N8N_DATA_DIR N8N_VERSION N8N_HOST_PORT N8N_WEBHOOK_URL DOCKER_NET
 
 RECONFIGURE=no
 NO_QUESTIONS=no
+REMOVE=no
 for arg in "$@"; do
   case "$arg" in
     --reconfigure)  RECONFIGURE=yes ;;
     --no-questions) NO_QUESTIONS=yes ;;
+    --remove)       REMOVE=yes ;;
     -h|--help)
-      echo "Usage: $0 [--reconfigure | --no-questions]"
+      echo "Usage: $0 [--reconfigure | --no-questions | --remove]"
       echo "  --reconfigure   ask the setup questions again and save new answers"
       echo "  --no-questions  never ask; use the settings file if there is one,"
       echo "                  otherwise the values written in this script"
+      echo "  --remove        uninstall n8n, its images, the nightly update and the"
+      echo "                  saved answers; asks before deleting your workflows"
       echo "Settings file: $SETTINGS_FILE"
       exit 0 ;;
     *) echo "${C_ERR}Unknown option: $arg (try --help)${C_OFF}"; exit 1 ;;
@@ -705,6 +715,81 @@ if ! docker info >/dev/null 2>&1; then
   echo "${C_OK} Docker is running.${C_OFF}"
 fi
 
+# ---- Uninstall (--remove) ---------------------------------------------------
+# Takes away everything this script set up. Your workflows and credentials are
+# a separate question, and deleting them means typing the word "delete", so a
+# stray Enter can't wipe them.
+
+run_remove() {
+  local answer
+  if [ ! -t 0 ]; then
+    echo "${C_ERR}--remove needs someone at the keyboard to confirm.${C_OFF}"
+    exit 1
+  fi
+  clear 2>/dev/null || printf '\033[2J\033[H'
+  echo "${C_HEAD}Removing n8n from this computer${C_OFF}"
+  echo
+  echo "This will:"
+  echo "  - stop and delete the n8n and n8n-runners containers"
+  echo "  - delete the $DOCKER_NETWORK Docker network"
+  echo "  - delete the downloaded n8n and n8n runners images"
+  echo "  - turn off the nightly update"
+  echo "  - delete your saved answers and the nightly log next to this script"
+  echo
+  echo "Your workflows, credentials and files in $N8N_DATA_DIR are kept"
+  echo "unless you choose otherwise on the next question."
+  if ! ask_yes_no "${C_ERR}Remove n8n?${C_OFF}" n; then
+    echo "OK, nothing was removed."
+    exit 0
+  fi
+
+  local delete_data=no
+  if [ -d "$N8N_DATA_DIR" ] && [ "$N8N_DATA_DIR" != "/" ] && [ "$N8N_DATA_DIR" != "$HOME" ]; then
+    echo
+    echo "${C_ERR}Do you also want to delete $N8N_DATA_DIR?${C_OFF}"
+    echo "That's every workflow, credential and file n8n has. It can't be undone."
+    read -r -p "  Type delete to delete it, or press Enter to keep it: " answer || answer=""
+    [ "$answer" = delete ] && delete_data=yes
+  fi
+
+  echo
+  echo "Removing the containers..."
+  docker rm -f n8n n8n-runners >/dev/null 2>&1 || true
+  echo "Removing the network..."
+  docker network rm "$DOCKER_NETWORK" >/dev/null 2>&1 || true
+  echo "Removing the images..."
+  local images
+  images="$(docker images -q n8nio/n8n; docker images -q n8nio/runners)"
+  if [ -n "$images" ]; then
+    # shellcheck disable=SC2086
+    docker rmi -f $images >/dev/null 2>&1 || true
+  fi
+  if command -v crontab >/dev/null 2>&1 && crontab -l 2>/dev/null | grep -qF "$CRON_TAG"; then
+    echo "Turning off the nightly update..."
+    crontab -l 2>/dev/null | grep -vF "$CRON_TAG" | crontab - || true
+  fi
+  echo "Removing the saved answers and the nightly log..."
+  rm -f "$SETTINGS_FILE" "$SCRIPT_DIR/n8n-nightly.log"
+
+  echo
+  if [ "$delete_data" = yes ]; then
+    if rm -rf "$N8N_DATA_DIR" 2>/dev/null; then
+      echo "Deleted $N8N_DATA_DIR."
+    else
+      echo "${C_WARN}Some files in $N8N_DATA_DIR belong to the container's user, so I"
+      echo "couldn't delete them all. Finish with: sudo rm -rf \"$N8N_DATA_DIR\"${C_OFF}"
+    fi
+  else
+    echo "Your workflows, credentials and files are still in $N8N_DATA_DIR."
+    echo "Run this script again any time to bring n8n back with them."
+  fi
+  echo "${C_OK}n8n has been removed.${C_OFF} This script is still here; delete its folder"
+  echo "if you don't need it anymore."
+  exit 0
+}
+
+if [ "$REMOVE" = yes ]; then run_remove; fi
+
 # Start downloading both images now, so they're ready or nearly ready by the
 # time the questions are done. The pull step further down waits for them.
 docker pull -q "n8nio/runners:$N8N_VERSION" >/dev/null 2>&1 &
@@ -940,7 +1025,6 @@ echo "(look for two lines starting with: Registered runner)"
 # The cron entry is found again by the tag at the end of its line. PATH is
 # copied in because cron's own PATH usually can't find docker.
 
-CRON_TAG="# n8n-docker-task-runners nightly update"
 if [ "$ASKED_QUESTIONS" = yes ]; then
   echo
   if ! command -v crontab >/dev/null 2>&1; then
