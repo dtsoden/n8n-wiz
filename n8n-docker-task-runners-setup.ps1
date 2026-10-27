@@ -26,7 +26,7 @@
 # =============================================================================
 #
 # What this script does
-#   1. Works out your settings (see "Two ways to set it up" below).
+#   1. Makes sure Docker is running, then works out your settings.
 #   2. Pulls the n8n and n8n runners images (same version for both).
 #   3. Removes any old "n8n" and "n8n-runners" containers.
 #   4. Writes the launcher config file task-runners.json to your data folder.
@@ -227,105 +227,323 @@ function Save-SettingsFile {
 
 # ---- Questions --------------------------------------------------------------
 
-# Offers the current value as the default (Enter keeps it), turns "none" into
-# an empty value, and asks again until the answer works.
+# Prints the question, offers the current value as the answer you get by
+# pressing Enter, turns "none" into an empty value, and asks again until the
+# answer works.
 function Ask([string]$Name, [string]$Question) {
-    $shown = if ($S[$Name] -eq '') { 'none' } else { $S[$Name] }
+    $hint = if ($S[$Name] -eq '') {
+        '  Press Enter to leave this empty, or type something'
+    } else {
+        "  Press Enter for $($S[$Name]), or type something else"
+    }
+    Write-Host ''
+    Write-Host $Question
     while ($true) {
-        $answer = Read-Host "$Question [$shown]"
+        $answer = Read-Host $hint
         if ($answer -eq '') { $answer = $S[$Name] }
+        if ($Name -like 'JS_*' -or $Name -like 'PY_*') { $answer = $answer -replace '\s', '' }
         if ($answer -eq 'none') { $answer = '' }
         if ($answer.StartsWith('~')) { $answer = $env:USERPROFILE + $answer.Substring(1) }
         if (Test-Setting $Name $answer) {
             $S[$Name] = $answer
             return
         }
-        Write-Host "  That doesn't look right. Please try again." -ForegroundColor Yellow
+        Write-Host "  Sorry, that won't work here. Have another go." -ForegroundColor Yellow
     }
 }
 
-# Returns $true for yes. $Default is 'y' or 'n'.
+# Prints the question and returns $true for yes. $Default ('y' or 'n') is what
+# pressing Enter means.
 function Ask-YesNo([string]$Question, [string]$Default) {
+    $hint = if ($Default -eq 'y') { '  Press Enter for yes, or type no' } else { '  Press Enter for no, or type yes' }
+    Write-Host ''
+    Write-Host $Question
     while ($true) {
-        $answer = Read-Host "$Question [$Default]"
+        $answer = Read-Host $hint
         if ($answer -eq '') { $answer = $Default }
         if ($answer -match '^[Yy]') { return $true }
         if ($answer -match '^[Nn]') { return $false }
+        Write-Host '  Please type yes or no.' -ForegroundColor Yellow
+    }
+}
+
+# Empty values and * read better in the summary than the stored form.
+function Show-Value([string]$Value) {
+    if ($Value -eq '') { return 'nothing' }
+    if ($Value -eq '*') { return 'everything' }
+    return $Value
+}
+
+# Show-Seconds 300 returns "300 seconds (5 minutes)" so nobody has to do the math.
+function Show-Seconds([int]$Seconds) {
+    if ($Seconds -lt 60) { return "$Seconds seconds" }
+    $m = [math]::Floor($Seconds / 60)
+    $r = $Seconds % 60
+    $out = if ($m -eq 1) { '1 minute' } else { "$m minutes" }
+    if ($r -eq 1) { $out += ' 1 second' } elseif ($r -gt 1) { $out += " $r seconds" }
+    return "$Seconds seconds ($out)"
+}
+
+# Prints numbered options and returns the number picked. Enter picks $Default.
+function Select-Option([string]$Question, [int]$Default, [string[]]$Options) {
+    Write-Host ''
+    Write-Host $Question
+    for ($i = 0; $i -lt $Options.Count; $i++) { Write-Host "  $($i + 1)  $($Options[$i])" }
+    while ($true) {
+        $answer = Read-Host "  Press Enter for $Default, or type a number"
+        if ($answer -eq '') { $answer = "$Default" }
+        if ($answer -match '^[0-9]+$' -and [int]$answer -ge 1 -and [int]$answer -le $Options.Count) { return [int]$answer }
+        Write-Host "  Please type a number from 1 to $($Options.Count)." -ForegroundColor Yellow
+    }
+}
+
+# Returns, comma separated, what the runners image offers: 'js-builtin',
+# 'js-npm' or 'py-stdlib'. It asks the image itself, so the list always matches
+# the version that will run, and returns '' if Docker can't answer.
+function Get-ImageList([string]$Kind) {
+    Wait-RunnersImage
+    $image = "n8nio/runners:$($S.N8N_VERSION)"
+    & docker image inspect $image *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '  Downloading the n8n runners image to read the list. This can take a minute...'
+        & docker pull -q $image *> $null
+        if ($LASTEXITCODE -ne 0) { return '' }
+    }
+    $out = switch ($Kind) {
+        'js-builtin' {
+            & docker run --rm --entrypoint node $image -e "console.log(require('module').builtinModules.filter(m=>!m.startsWith('_')&&!m.includes('/')).join(','))" 2>$null
+        }
+        'js-npm' {
+            # Scoped (@...) and n8n-* folders are the runner's own code.
+            & docker run --rm --entrypoint ls $image /opt/runners/task-runner-javascript/node_modules 2>$null |
+                Where-Object { $_ -notmatch '^(@|n8n-)' }
+        }
+        'py-stdlib' {
+            & docker run --rm --entrypoint /opt/runners/task-runner-python/.venv/bin/python $image -c "import sys; print(','.join(sorted(m for m in sys.stdlib_module_names if not m.startswith('_'))))" 2>$null
+        }
+    }
+    if ($LASTEXITCODE -ne 0) { return '' }
+    return (@($out) -join ',').Trim()
+}
+
+# Prints the names to copy from, or where to find them when Docker couldn't
+# supply the list.
+function Show-List([string]$List, [string]$Where) {
+    if ($List -eq '') {
+        Write-Host "  I couldn't read the list from Docker. The names are at $Where"
+        return
+    }
+    Write-Host '  These come installed:'
+    $line = '   '
+    foreach ($n in $List.Split(',')) {
+        if ($line.Length + $n.Length + 2 -gt 76) { Write-Host $line.TrimEnd(); $line = '   ' }
+        $line += " $n,"
+    }
+    Write-Host $line.TrimEnd(',')
+}
+
+# Like Ask, but turns down names that aren't in $List so a typo doesn't slip
+# through. An empty $List skips that check.
+function Read-Names([string]$Name, [string]$Question, [string]$List) {
+    $known = $List.Split(',')
+    while ($true) {
+        Ask $Name $Question
+        if ($List -eq '') { return }
+        $bad = @($S[$Name].Split(',') | Where-Object { $_ -ne '' -and $_ -ne '*' -and $known -notcontains $_ })
+        if ($bad.Count -eq 0) { return }
+        Write-Host "  Not in the list: $($bad -join ', '). Check the spelling against the list above." -ForegroundColor Yellow
     }
 }
 
 function Invoke-Questions {
     Write-Host ''
-    Write-Host 'Press Enter to accept the value in brackets.'
-    Write-Host ''
-    Ask 'N8N_DATA_DIR' "Folder for n8n's data"
-    Write-Host '  "latest" upgrades n8n every time this script runs. A number such as'
-    Write-Host '  2.45.4 stays on that release.'
-    Ask 'N8N_VERSION' 'n8n version'
-    Ask 'N8N_HOST_PORT' 'Port to open n8n on in your browser'
+    Write-Host "Each question comes with a suggested answer. If you're not sure, just"
+    Write-Host 'press Enter to take it. You can change any of this later by running the'
+    Write-Host 'script with -Reconfigure.'
+
+    Ask 'N8N_DATA_DIR' 'Where should n8n keep its workflows, credentials and other data?'
+
+    Ask 'N8N_HOST_PORT' "Which port number should n8n use? If you don't know what that means, just press Enter."
 
     $hasUrl = if ($S.N8N_WEBHOOK_URL -ne '') { 'y' } else { 'n' }
-    if (Ask-YesNo 'Will other people or services reach this n8n at a public address?' $hasUrl) {
+    if (Ask-YesNo "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." $hasUrl) {
         while ($true) {
-            Ask 'N8N_WEBHOOK_URL' 'Public address, such as https://n8n.example.com/'
+            Ask 'N8N_WEBHOOK_URL' "What's that address? Include the https:// at the start."
             if ($S.N8N_WEBHOOK_URL -ne '') { break }
-            Write-Host '  Enter the full address, starting with https://' -ForegroundColor Yellow
+            Write-Host '  You said people will reach it from the internet, so I need the address.' -ForegroundColor Yellow
         }
     } else {
         $S.N8N_WEBHOOK_URL = ''
     }
 
-    Ask 'TASK_TIMEOUT' 'Seconds a Code node may run before it is stopped'
+    Ask 'TASK_TIMEOUT' "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(Show-Seconds $S.TASK_TIMEOUT). For 10 minutes, type 600."
 
     Write-Host ''
-    Write-Host 'What the Code node may import. Use commas between names, * for'
-    Write-Host 'everything in the runners image, or none. Whether * suits you is your'
-    Write-Host 'call. The risks are covered at'
+    Write-Host 'Next, which code libraries your Code nodes may load. Allowing everything'
+    Write-Host 'is easiest, but it also lets a Code node do more on the machine it runs'
+    Write-Host 'on. If you want to read up before deciding, see'
     Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners'
-    Ask 'JS_BUILTIN_ALLOW' 'JavaScript, Node.js built-in modules'
-    Ask 'JS_EXTERNAL_ALLOW' 'JavaScript, npm packages'
-    Ask 'PY_STDLIB_ALLOW' 'Python, standard library modules'
-    Ask 'PY_EXTERNAL_ALLOW' 'Python, third-party packages'
+
+    $jsNow = ''
+    $jsDefault = if ($S.JS_BUILTIN_ALLOW -eq '*' -and $S.JS_EXTERNAL_ALLOW -eq '*') { 1 }
+        elseif ($S.JS_BUILTIN_ALLOW -eq 'crypto' -and $S.JS_EXTERNAL_ALLOW -eq 'moment') { 2 }
+        elseif ($S.JS_BUILTIN_ALLOW -eq '' -and $S.JS_EXTERNAL_ALLOW -eq '') { 3 }
+        else { $jsNow = " (you have $(Show-Value $S.JS_BUILTIN_ALLOW) and $(Show-Value $S.JS_EXTERNAL_ALLOW) now)"; 4 }
+    $choice = Select-Option 'Which libraries can JavaScript Code nodes use?' $jsDefault @(
+        'Everything that comes installed',
+        'Just crypto and moment',
+        'None',
+        "Let me pick from the full list$jsNow")
+    switch ($choice) {
+        1 { $S.JS_BUILTIN_ALLOW = '*'; $S.JS_EXTERNAL_ALLOW = '*' }
+        2 { $S.JS_BUILTIN_ALLOW = 'crypto'; $S.JS_EXTERNAL_ALLOW = 'moment' }
+        3 { $S.JS_BUILTIN_ALLOW = ''; $S.JS_EXTERNAL_ALLOW = '' }
+        4 {
+            Write-Host ''
+            Write-Host 'First, Node.js built-in libraries.'
+            $list = Get-ImageList 'js-builtin'
+            Show-List $list 'https://nodejs.org/api/'
+            Read-Names 'JS_BUILTIN_ALLOW' 'Type the ones to allow, separated by commas:' $list
+            Write-Host ''
+            Write-Host 'Now npm packages.'
+            $list = Get-ImageList 'js-npm'
+            Show-List $list 'https://github.com/n8n-io/n8n/tree/master/docker/images/runners'
+            Read-Names 'JS_EXTERNAL_ALLOW' 'Type the ones to allow, separated by commas:' $list
+        }
+    }
+
+    # Python's extra packages in the image are only the runner's own plumbing,
+    # so they follow the standard library answer instead of getting a question.
+    $pyCommon = 'json,datetime,math,re,random,statistics'
+    $pyNow = ''
+    $pyDefault = if ($S.PY_STDLIB_ALLOW -eq '*') { 1 }
+        elseif ($S.PY_STDLIB_ALLOW -eq $pyCommon) { 2 }
+        elseif ($S.PY_STDLIB_ALLOW -eq '') { 3 }
+        else { $pyNow = " (you have $($S.PY_STDLIB_ALLOW) now)"; 4 }
+    $choice = Select-Option 'Which libraries can Python Code nodes use?' $pyDefault @(
+        "Everything in Python's standard library",
+        'Just json, datetime, math, re, random and statistics',
+        'None',
+        "Let me pick from the full list$pyNow")
+    switch ($choice) {
+        1 { $S.PY_STDLIB_ALLOW = '*'; $S.PY_EXTERNAL_ALLOW = '*' }
+        2 { $S.PY_STDLIB_ALLOW = $pyCommon; $S.PY_EXTERNAL_ALLOW = '' }
+        3 { $S.PY_STDLIB_ALLOW = ''; $S.PY_EXTERNAL_ALLOW = '' }
+        4 {
+            Write-Host ''
+            $list = Get-ImageList 'py-stdlib'
+            Show-List $list 'https://docs.python.org/3/py-modindex.html'
+            Read-Names 'PY_STDLIB_ALLOW' 'Type the ones to allow, separated by commas:' $list
+            $S.PY_EXTERNAL_ALLOW = ''
+        }
+    }
 
     Write-Host ''
-    Write-Host 'n8n 2.0 and later turn off the Execute Command and Local File Trigger nodes.'
+    Write-Host 'n8n 2.0 and later switch off two nodes that can run commands and read'
+    Write-Host 'files on this computer: Execute Command and Local File Trigger.'
     $execDefault = if ($S.ENABLE_EXEC_NODES -eq 'yes') { 'y' } else { 'n' }
-    $S.ENABLE_EXEC_NODES = if (Ask-YesNo 'Turn them back on?' $execDefault) { 'yes' } else { 'no' }
+    $S.ENABLE_EXEC_NODES = if (Ask-YesNo 'Do you want them switched back on?' $execDefault) { 'yes' } else { 'no' }
 
     Write-Host ''
-    Write-Host 'Your settings:'
-    foreach ($key in $S.Keys) { Write-Host "  $key=$($S[$key])" }
-    if (-not (Ask-YesNo 'Save these and start n8n?' 'y')) {
-        Write-Host "Nothing changed. Run the script again when you're ready."
+    Write-Host "Here's what you chose:"
+    Write-Host "  Data folder:                    $($S.N8N_DATA_DIR)"
+    Write-Host "  Port:                           $($S.N8N_HOST_PORT)"
+    Write-Host "  Internet address:               $(if ($S.N8N_WEBHOOK_URL) { $S.N8N_WEBHOOK_URL } else { 'none, this computer only' })"
+    Write-Host "  Code node time limit:           $(Show-Seconds $S.TASK_TIMEOUT)"
+    Write-Host "  JavaScript built-in libraries:  $(Show-Value $S.JS_BUILTIN_ALLOW)"
+    Write-Host "  JavaScript npm packages:        $(Show-Value $S.JS_EXTERNAL_ALLOW)"
+    Write-Host "  Python libraries:               $(Show-Value $S.PY_STDLIB_ALLOW)"
+    Write-Host "  Execute Command and Local File: $($S.ENABLE_EXEC_NODES)"
+    if (-not (Ask-YesNo "Does that look right? I'll save it and start n8n." 'y')) {
+        Write-Host "OK, nothing was changed. Run the script again when you're ready."
         exit 0
     }
     Save-SettingsFile
 }
 
-# ---- Work out the settings --------------------------------------------------
-# A scheduled task has nobody at the keyboard, so it must never stop to ask.
-# -NoQuestions guarantees that; the check below catches most other cases.
+# ---- Docker -----------------------------------------------------------------
+# Everything after the questions needs Docker, so make sure it is installed and
+# running before asking anything. A scheduled task has nobody at the keyboard,
+# so it must never stop to ask. -NoQuestions guarantees that; the check below
+# catches most other cases.
 
 $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
 
-if ($Reconfigure) {
-    if (-not $interactive) {
-        Write-Host '-Reconfigure needs someone at the keyboard to answer the questions.' -ForegroundColor Red
+if ($Reconfigure -and -not $interactive) {
+    Write-Host '-Reconfigure needs someone at the keyboard to answer the questions.' -ForegroundColor Red
+    exit 1
+}
+
+# Saved answers are loaded now so the downloads below fetch the right version.
+# On -Reconfigure they also show up as the answers you get by pressing Enter.
+if (Test-Path -LiteralPath $SettingsFile) { Read-SettingsFile }
+
+function Test-DockerRunning {
+    & docker info *> $null
+    return $LASTEXITCODE -eq 0
+}
+
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host "Docker isn't installed on this computer, and n8n runs inside it." -ForegroundColor Red
+    Write-Host 'Install Docker Desktop from https://www.docker.com/products/docker-desktop/'
+    Write-Host 'start it, then run this script again.'
+    exit 1
+}
+
+if (-not (Test-DockerRunning)) {
+    $dockerDesktop = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+    if ($NoQuestions -or -not $interactive) {
+        Write-Host "Docker isn't running. Trying to start it..."
+    } elseif (-not (Ask-YesNo "Docker is installed but isn't running. Do you want me to start it?" 'y')) {
+        Write-Host 'OK. Start Docker Desktop yourself, then run this script again.'
         exit 1
     }
-    # Load the current answers first so they show up as the defaults.
-    if (Test-Path -LiteralPath $SettingsFile) { Read-SettingsFile }
+    if (Test-Path -LiteralPath $dockerDesktop) {
+        Start-Process -FilePath $dockerDesktop
+    } else {
+        Write-Host "I couldn't find Docker Desktop at $dockerDesktop, so please start it yourself." -ForegroundColor Yellow
+    }
+    Write-Host 'Waiting for Docker to start' -NoNewline
+    $tries = 0
+    while (-not (Test-DockerRunning)) {
+        $tries++
+        if ($tries -gt 60) {
+            Write-Host ''
+            Write-Host "Docker still isn't running after 3 minutes. Open Docker Desktop yourself," -ForegroundColor Red
+            Write-Host "wait until it says it's running, then run this script again."
+            exit 1
+        }
+        Write-Host '.' -NoNewline
+        Start-Sleep -Seconds 3
+    }
+    Write-Host ' Docker is running.'
+}
+
+# Start downloading both images now, so they're ready or nearly ready by the
+# time the questions are done. The pull step further down waits for them.
+$RunnersPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pull', '-q', "n8nio/runners:$($S.N8N_VERSION)" -WindowStyle Hidden -PassThru
+$N8nPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pull', '-q', "n8nio/n8n:$($S.N8N_VERSION)" -WindowStyle Hidden -PassThru
+
+# The list questions read from the runners image, so they wait for it first.
+function Wait-RunnersImage {
+    if ($script:RunnersPull -and -not $script:RunnersPull.HasExited) {
+        Write-Host '  Waiting for the n8n download to finish so I can read the list...'
+        $script:RunnersPull.WaitForExit()
+    }
+}
+
+# ---- Work out the settings --------------------------------------------------
+
+if ($Reconfigure) {
     Invoke-Questions
 } elseif (Test-Path -LiteralPath $SettingsFile) {
     Write-Host "Using settings from $SettingsFile"
-    Read-SettingsFile
 } elseif ($NoQuestions -or -not $interactive) {
     Write-Host 'No settings file next to the script; using the values written in it.'
 } else {
-    Write-Host 'No settings file found next to this script.'
-    if (Ask-YesNo 'Answer a few setup questions now? (n uses the values written in the script)' 'y') {
-        Invoke-Questions
-    }
+    Write-Host 'Looks like this is your first time running this, so I have a few'
+    Write-Host 'questions to get n8n set up the way you want.'
+    Invoke-Questions
 }
 
 # Values typed straight into this script are checked here too.
@@ -351,17 +569,16 @@ function Invoke-Docker {
     }
 }
 
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host 'docker was not found. Install Docker Desktop and start it first.' -ForegroundColor Red
-    exit 1
-}
-
 # ---- Pull images first ------------------------------------------------------
 # Pulling before removing anything means a typo in the version or a network
 # problem stops the script while your current n8n is still running.
 
 $version = $S.N8N_VERSION
 Write-Host "Pulling n8nio/n8n:$version and n8nio/runners:$version..."
+# Let the background downloads finish. Pulling again afterwards takes a moment
+# and shows a real error if one of them failed.
+$RunnersPull.WaitForExit()
+$N8nPull.WaitForExit()
 Invoke-Docker pull "n8nio/n8n:$version"
 Invoke-Docker pull "n8nio/runners:$version"
 
@@ -554,3 +771,11 @@ Write-Host ''
 Write-Host "Done. Open http://localhost:$($S.N8N_HOST_PORT)"
 Write-Host 'Check the runners connected with: docker logs n8n'
 Write-Host '(look for two lines starting with: Registered runner)'
+
+# Only when someone is watching, so the nightly log stays quiet.
+if ($interactive -and -not $NoQuestions) {
+    Write-Host ''
+    Write-Host 'If this saved you some time, please give it a star on GitHub. Stars are' -ForegroundColor Cyan
+    Write-Host 'how other n8n users find it. The Star button is at the top right of:' -ForegroundColor Cyan
+    Write-Host 'https://github.com/dtsoden/n8n-docker-task-runners' -ForegroundColor Cyan
+}

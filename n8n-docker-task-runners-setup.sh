@@ -27,7 +27,7 @@
 # =============================================================================
 #
 # What this script does
-#   1. Works out your settings (see "Two ways to set it up" below).
+#   1. Makes sure Docker is running, then works out your settings.
 #   2. Pulls the n8n and n8n runners images (same version for both).
 #   3. Stops and removes any old "n8n" and "n8n-runners" containers.
 #   4. Writes the launcher config file task-runners.json to your data folder.
@@ -242,116 +242,356 @@ save_settings() {
 
 # ---- Questions --------------------------------------------------------------
 
-# ask NAME "Question": offers the current value as the default (Enter keeps
-# it), turns "none" into an empty value, and asks again until the answer works.
+# ask NAME "Question": prints the question, offers the current value as the
+# answer you get by pressing Enter, turns "none" into an empty value, and asks
+# again until the answer works.
 ask() {
-  local name="$1" answer shown="${!1}"
-  [ -z "$shown" ] && shown="none"
+  local name="$1" answer hint
+  if [ -n "${!name}" ]; then
+    hint="Press Enter for ${!name}, or type something else: "
+  else
+    hint="Press Enter to leave this empty, or type something: "
+  fi
+  echo
+  echo "$2"
   while true; do
-    read -r -p "$2 [$shown]: " answer
+    read -r -p "  $hint" answer
     [ -z "$answer" ] && answer="${!name}"
+    case "$name" in JS_*|PY_*) answer="${answer// /}" ;; esac
     [ "$answer" = "none" ] && answer=""
     case "$answer" in "~"*) answer="$HOME${answer#\~}" ;; esac
     if valid "$name" "$answer"; then
       printf -v "$name" '%s' "$answer"
       return
     fi
-    echo "  That doesn't look right. Please try again."
+    echo "  Sorry, that won't work here. Have another go."
   done
 }
 
-# ask_yes_no "Question" y|n : returns success for yes.
+# ask_yes_no "Question" y|n : prints the question and returns success for yes.
+# The second argument is what pressing Enter means.
 ask_yes_no() {
-  local answer
+  local answer hint
+  if [ "$2" = y ]; then
+    hint="Press Enter for yes, or type no: "
+  else
+    hint="Press Enter for no, or type yes: "
+  fi
+  echo
+  echo "$1"
   while true; do
-    read -r -p "$1 [$2]: " answer
+    read -r -p "  $hint" answer
     answer="${answer:-$2}"
     case "$answer" in
       [Yy]*) return 0 ;;
       [Nn]*) return 1 ;;
     esac
+    echo "  Please type yes or no."
+  done
+}
+
+# Empty values and * read better in the summary than the stored form.
+show_value() {
+  case "$1" in
+    "") echo "nothing" ;;
+    "*") echo "everything" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# show_seconds 300 prints "300 seconds (5 minutes)" so nobody has to do the math.
+show_seconds() {
+  local s="$1" m=$(( $1 / 60 )) r=$(( $1 % 60 )) out=""
+  if [ "$s" -lt 60 ]; then
+    echo "$s seconds"
+    return
+  fi
+  if [ "$m" -eq 1 ]; then out="1 minute"; else out="$m minutes"; fi
+  if [ "$r" -eq 1 ]; then out="$out 1 second"; elif [ "$r" -gt 1 ]; then out="$out $r seconds"; fi
+  echo "$s seconds ($out)"
+}
+
+# menu "Question" DEFAULT "option" "option" ...: prints numbered options and
+# sets MENU_CHOICE to the number picked. Enter picks DEFAULT.
+menu() {
+  local question="$1" default="$2" answer i=1 opt
+  shift 2
+  echo
+  echo "$question"
+  for opt in "$@"; do
+    echo "  $i  $opt"
+    i=$((i + 1))
+  done
+  while true; do
+    read -r -p "  Press Enter for $default, or type a number: " answer
+    answer="${answer:-$default}"
+    if [[ "$answer" =~ $RE_NUMBER ]] && [ "$answer" -ge 1 ] && [ "$answer" -le $# ]; then
+      MENU_CHOICE="$answer"
+      return
+    fi
+    echo "  Please type a number from 1 to $#."
+  done
+}
+
+# image_list js-builtin|js-npm|py-stdlib prints, comma separated, what the
+# runners image offers. It asks the image itself, so the list always matches
+# the version that will run, and prints nothing if Docker can't answer.
+image_list() {
+  local image="n8nio/runners:$N8N_VERSION"
+  if ! docker image inspect "$image" >/dev/null 2>&1; then
+    echo "  Downloading the n8n runners image to read the list. This can take a minute..." >&2
+    docker pull -q "$image" >/dev/null 2>&1 || return 0
+  fi
+  case "$1" in
+    js-builtin)
+      docker run --rm --entrypoint node "$image" \
+        -e "console.log(require('module').builtinModules.filter(m=>!m.startsWith('_')&&!m.includes('/')).join(','))" ;;
+    js-npm)
+      # Scoped (@...) and n8n-* folders are the runner's own code.
+      docker run --rm --entrypoint ls "$image" /opt/runners/task-runner-javascript/node_modules \
+        | grep -v -e '^@' -e '^n8n-' | paste -sd, - ;;
+    py-stdlib)
+      docker run --rm --entrypoint /opt/runners/task-runner-python/.venv/bin/python "$image" \
+        -c "import sys; print(','.join(sorted(m for m in sys.stdlib_module_names if not m.startswith('_'))))" ;;
+  esac 2>/dev/null
+}
+
+# show_list LIST WHERE: prints the names to copy from, or where to find them
+# when Docker couldn't supply the list.
+show_list() {
+  if [ -n "$1" ]; then
+    echo "  These come installed:"
+    echo "$1" | sed 's/,/, /g' | fold -s -w 72 | sed 's/^/    /' | sed "s/ *$//"
+  else
+    echo "  I couldn't read the list from Docker. The names are at $2"
+  fi
+}
+
+# pick_names NAME "Question" LIST: like ask, but turns down names that aren't
+# in LIST so a typo doesn't slip through. An empty LIST skips that check.
+pick_names() {
+  local name="$1" question="$2" list="$3" n bad
+  while true; do
+    ask "$name" "$question"
+    bad=""
+    if [ -n "$list" ]; then
+      for n in $(echo "${!name}" | tr ',' ' '); do
+        [ "$n" = "*" ] && continue
+        case ",$list," in *",$n,"*) ;; *) bad="$bad $n" ;; esac
+      done
+    fi
+    [ -z "$bad" ] && return
+    echo "  Not in the list:$bad. Check the spelling against the list above."
   done
 }
 
 run_questions() {
   echo
-  echo "Press Enter to accept the value in brackets."
-  echo
-  ask N8N_DATA_DIR "Folder for n8n's data"
-  echo "  \"latest\" upgrades n8n every time this script runs. A number such as"
-  echo "  2.45.4 stays on that release."
-  ask N8N_VERSION "n8n version"
-  ask N8N_HOST_PORT "Port to open n8n on in your browser"
+  echo "Each question comes with a suggested answer. If you're not sure, just"
+  echo "press Enter to take it. You can change any of this later by running the"
+  echo "script with --reconfigure."
+
+  ask N8N_DATA_DIR "Where should n8n keep its workflows, credentials and other data?"
+
+  ask N8N_HOST_PORT "Which port number should n8n use? If you don't know what that means, just press Enter."
 
   local has_url=n
   [ -n "$N8N_WEBHOOK_URL" ] && has_url=y
-  if ask_yes_no "Will other people or services reach this n8n at a public address?" "$has_url"; then
+  if ask_yes_no "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." "$has_url"; then
     while true; do
-      ask N8N_WEBHOOK_URL "Public address, such as https://n8n.example.com/"
+      ask N8N_WEBHOOK_URL "What's that address? Include the https:// at the start."
       [ -n "$N8N_WEBHOOK_URL" ] && break
-      echo "  Enter the full address, starting with https://"
+      echo "  You said people will reach it from the internet, so I need the address."
     done
   else
     N8N_WEBHOOK_URL=""
   fi
 
-  ask TASK_TIMEOUT "Seconds a Code node may run before it is stopped"
+  ask TASK_TIMEOUT "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(show_seconds "$TASK_TIMEOUT"). For 10 minutes, type 600."
 
   echo
-  echo "What the Code node may import. Use commas between names, * for"
-  echo "everything in the runners image, or none. Whether * suits you is your"
-  echo "call. The risks are covered at"
+  echo "Next, which code libraries your Code nodes may load. Allowing everything"
+  echo "is easiest, but it also lets a Code node do more on the machine it runs"
+  echo "on. If you want to read up before deciding, see"
   echo "https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners"
-  ask JS_BUILTIN_ALLOW "JavaScript, Node.js built-in modules"
-  ask JS_EXTERNAL_ALLOW "JavaScript, npm packages"
-  ask PY_STDLIB_ALLOW "Python, standard library modules"
-  ask PY_EXTERNAL_ALLOW "Python, third-party packages"
+
+  local js_default=4 js_now=""
+  if [ "$JS_BUILTIN_ALLOW" = "*" ] && [ "$JS_EXTERNAL_ALLOW" = "*" ]; then js_default=1
+  elif [ "$JS_BUILTIN_ALLOW" = crypto ] && [ "$JS_EXTERNAL_ALLOW" = moment ]; then js_default=2
+  elif [ -z "$JS_BUILTIN_ALLOW" ] && [ -z "$JS_EXTERNAL_ALLOW" ]; then js_default=3
+  else js_now=" (you have $(show_value "$JS_BUILTIN_ALLOW") and $(show_value "$JS_EXTERNAL_ALLOW") now)"
+  fi
+  menu "Which libraries can JavaScript Code nodes use?" "$js_default" \
+    "Everything that comes installed" \
+    "Just crypto and moment" \
+    "None" \
+    "Let me pick from the full list$js_now"
+  case "$MENU_CHOICE" in
+    1) JS_BUILTIN_ALLOW="*"; JS_EXTERNAL_ALLOW="*" ;;
+    2) JS_BUILTIN_ALLOW="crypto"; JS_EXTERNAL_ALLOW="moment" ;;
+    3) JS_BUILTIN_ALLOW=""; JS_EXTERNAL_ALLOW="" ;;
+    4)
+      local list
+      echo
+      echo "First, Node.js built-in libraries."
+      wait_for_runners_image
+      list="$(image_list js-builtin)"
+      show_list "$list" "https://nodejs.org/api/"
+      pick_names JS_BUILTIN_ALLOW "Type the ones to allow, separated by commas:" "$list"
+      echo
+      echo "Now npm packages."
+      list="$(image_list js-npm)"
+      show_list "$list" "https://github.com/n8n-io/n8n/tree/master/docker/images/runners"
+      pick_names JS_EXTERNAL_ALLOW "Type the ones to allow, separated by commas:" "$list"
+      ;;
+  esac
+
+  # Python's extra packages in the image are only the runner's own plumbing,
+  # so they follow the standard library answer instead of getting a question.
+  local py_common="json,datetime,math,re,random,statistics" py_default=4 py_now=""
+  if [ "$PY_STDLIB_ALLOW" = "*" ]; then py_default=1
+  elif [ "$PY_STDLIB_ALLOW" = "$py_common" ]; then py_default=2
+  elif [ -z "$PY_STDLIB_ALLOW" ]; then py_default=3
+  else py_now=" (you have $PY_STDLIB_ALLOW now)"
+  fi
+  menu "Which libraries can Python Code nodes use?" "$py_default" \
+    "Everything in Python's standard library" \
+    "Just json, datetime, math, re, random and statistics" \
+    "None" \
+    "Let me pick from the full list$py_now"
+  case "$MENU_CHOICE" in
+    1) PY_STDLIB_ALLOW="*"; PY_EXTERNAL_ALLOW="*" ;;
+    2) PY_STDLIB_ALLOW="$py_common"; PY_EXTERNAL_ALLOW="" ;;
+    3) PY_STDLIB_ALLOW=""; PY_EXTERNAL_ALLOW="" ;;
+    4)
+      local list
+      echo
+      wait_for_runners_image
+      list="$(image_list py-stdlib)"
+      show_list "$list" "https://docs.python.org/3/py-modindex.html"
+      pick_names PY_STDLIB_ALLOW "Type the ones to allow, separated by commas:" "$list"
+      PY_EXTERNAL_ALLOW=""
+      ;;
+  esac
 
   echo
-  echo "n8n 2.0 and later turn off the Execute Command and Local File Trigger nodes."
+  echo "n8n 2.0 and later switch off two nodes that can run commands and read"
+  echo "files on this computer: Execute Command and Local File Trigger."
   local exec_default=n
   [ "$ENABLE_EXEC_NODES" = yes ] && exec_default=y
-  if ask_yes_no "Turn them back on?" "$exec_default"; then
+  if ask_yes_no "Do you want them switched back on?" "$exec_default"; then
     ENABLE_EXEC_NODES=yes
   else
     ENABLE_EXEC_NODES=no
   fi
 
   echo
-  echo "Your settings:"
-  local key
-  for key in $SETTING_NAMES; do
-    echo "  $key=${!key}"
-  done
-  if ! ask_yes_no "Save these and start n8n?" y; then
-    echo "Nothing changed. Run the script again when you're ready."
+  echo "Here's what you chose:"
+  echo "  Data folder:                    $N8N_DATA_DIR"
+  echo "  Port:                           $N8N_HOST_PORT"
+  echo "  Internet address:               ${N8N_WEBHOOK_URL:-none, this computer only}"
+  echo "  Code node time limit:           $(show_seconds "$TASK_TIMEOUT")"
+  echo "  JavaScript built-in libraries:  $(show_value "$JS_BUILTIN_ALLOW")"
+  echo "  JavaScript npm packages:        $(show_value "$JS_EXTERNAL_ALLOW")"
+  echo "  Python libraries:               $(show_value "$PY_STDLIB_ALLOW")"
+  echo "  Execute Command and Local File: $ENABLE_EXEC_NODES"
+  if ! ask_yes_no "Does that look right? I'll save it and start n8n." y; then
+    echo "OK, nothing was changed. Run the script again when you're ready."
     exit 0
   fi
   save_settings
 }
 
+# ---- Docker -----------------------------------------------------------------
+# Everything after the questions needs Docker, so make sure it is installed and
+# running before asking anything. [ -t 0 ] is true when someone is at the
+# keyboard. Under cron it is false, so a scheduled run never stops to wait for
+# an answer.
+
+if [ "$RECONFIGURE" = yes ] && [ ! -t 0 ]; then
+  echo "--reconfigure needs someone at the keyboard to answer the questions."
+  exit 1
+fi
+
+# Saved answers are loaded now so the downloads below fetch the right version.
+# On --reconfigure they also show up as the answers you get by pressing Enter.
+if [ -f "$SETTINGS_FILE" ]; then load_settings; fi
+
+start_docker() {
+  case "$(uname -s)" in
+    Darwin) open -a Docker ;;
+    Linux)
+      # Docker Desktop for Linux runs as a user service; plain Docker Engine
+      # runs as a system service.
+      if systemctl --user cat docker-desktop >/dev/null 2>&1; then
+        systemctl --user start docker-desktop
+      else
+        sudo systemctl start docker
+      fi ;;
+  esac
+}
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker isn't installed on this computer, and n8n runs inside it."
+  echo "Install Docker Desktop from https://www.docker.com/products/docker-desktop/"
+  echo "(on Linux, Docker Engine works too), start it, then run this script again."
+  exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  if [ -t 0 ]; then
+    if ! ask_yes_no "Docker is installed but isn't running. Do you want me to start it?" y; then
+      echo "OK. Start Docker yourself, then run this script again."
+      exit 1
+    fi
+  else
+    echo "Docker isn't running. Trying to start it..."
+  fi
+  start_docker || true
+  printf "Waiting for Docker to start"
+  tries=0
+  until docker info >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    if [ "$tries" -gt 60 ]; then
+      echo
+      echo "Docker still isn't running after 3 minutes. Open Docker yourself, wait"
+      echo "until it says it's running, then run this script again."
+      exit 1
+    fi
+    printf "."
+    sleep 3
+  done
+  echo " Docker is running."
+fi
+
+# Start downloading both images now, so they're ready or nearly ready by the
+# time the questions are done. The pull step further down waits for them.
+docker pull -q "n8nio/runners:$N8N_VERSION" >/dev/null 2>&1 &
+RUNNERS_PULL_PID=$!
+docker pull -q "n8nio/n8n:$N8N_VERSION" >/dev/null 2>&1 &
+N8N_PULL_PID=$!
+
+# The list questions read from the runners image, so they wait for it first.
+wait_for_runners_image() {
+  if [ -n "$RUNNERS_PULL_PID" ]; then
+    echo "  Waiting for the n8n download to finish so I can read the list..."
+    wait "$RUNNERS_PULL_PID" || true
+    RUNNERS_PULL_PID=""
+  fi
+}
+
 # ---- Work out the settings --------------------------------------------------
-# [ -t 0 ] is true when someone is at the keyboard. Under cron it is false, so
-# a scheduled run never stops to wait for an answer.
 
 if [ "$RECONFIGURE" = yes ]; then
-  if [ ! -t 0 ]; then
-    echo "--reconfigure needs someone at the keyboard to answer the questions."
-    exit 1
-  fi
-  # Load the current answers first so they show up as the defaults.
-  if [ -f "$SETTINGS_FILE" ]; then load_settings; fi
   run_questions
 elif [ -f "$SETTINGS_FILE" ]; then
   echo "Using settings from $SETTINGS_FILE"
-  load_settings
 elif [ "$NO_QUESTIONS" = yes ] || [ ! -t 0 ]; then
   echo "No settings file next to the script; using the values written in it."
 else
-  echo "No settings file found next to this script."
-  if ask_yes_no "Answer a few setup questions now? (n uses the values written in the script)" y; then
-    run_questions
-  fi
+  echo "Looks like this is your first time running this, so I have a few"
+  echo "questions to get n8n set up the way you want."
+  run_questions
 fi
 
 # Values typed straight into this script are checked here too.
@@ -370,6 +610,10 @@ WEBHOOK_URL_TO_USE="${N8N_WEBHOOK_URL:-http://localhost:$N8N_HOST_PORT/}"
 # problem stops the script while your current n8n is still running.
 
 echo "Pulling n8nio/n8n:$N8N_VERSION and n8nio/runners:$N8N_VERSION..."
+# Let the background downloads finish. Pulling again afterwards takes a moment
+# and shows a real error if one of them failed.
+if [ -n "$RUNNERS_PULL_PID" ]; then wait "$RUNNERS_PULL_PID" || true; fi
+wait "$N8N_PULL_PID" || true
 docker pull "n8nio/n8n:$N8N_VERSION"
 docker pull "n8nio/runners:$N8N_VERSION"
 
@@ -545,3 +789,11 @@ echo
 echo "Done. Open http://localhost:$N8N_HOST_PORT"
 echo "Check the runners connected with: docker logs n8n"
 echo "(look for two lines starting with: Registered runner)"
+
+# Only when someone is watching, so the nightly log stays quiet.
+if [ -t 0 ]; then
+  echo
+  echo "If this saved you some time, please give it a star on GitHub. Stars are"
+  echo "how other n8n users find it. The Star button is at the top right of:"
+  echo "https://github.com/dtsoden/n8n-docker-task-runners"
+fi

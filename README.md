@@ -6,6 +6,8 @@ I wrote it because keeping a community edition current by hand got old: stop the
 
 It's provided as is, as a convenience. It reflects my setup and my choices. Read the n8n docs linked below and make sure you understand what it does before you run it on anything you care about. That part is your responsibility.
 
+If it saves you some time, please give it a star with the Star button at the top right of this page. Stars are how other n8n users find it.
+
 ## What you get
 
 Two containers on one Docker network:
@@ -48,7 +50,11 @@ Then open http://localhost:5678 (or the port you chose).
 
 ### Answer the questions
 
-Run the script. The first time, it asks a few questions, each with a default you accept by pressing Enter: where to keep your data, which n8n version, which port, whether n8n has a public address, the Code node timeout, what the Code node may import, and whether to turn Execute Command and Local File Trigger back on. Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
+Run the script. It first checks that Docker is installed and running, and offers to start Docker if it isn't. The first time, it then asks a few questions, each with a suggested answer you take by pressing Enter: where to keep your data, which port, whether n8n has a public address, how long a Code node may run, which libraries JavaScript and Python Code nodes may load, and whether to turn Execute Command and Local File Trigger back on. The images download in the background while you answer. Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
+
+For the libraries you get a menu: everything that comes installed, a short common set, none, or your own pick. If you pick your own, the script reads the full list from the runners image you're about to run and shows it so you can copy names. It turns down any name that isn't on the list.
+
+The questions don't ask which n8n version to run. Every run uses `latest`, which is the point of the script.
 
 The settings file has to sit in the same folder as the script. The script only looks for it there, so if you move the script, move the settings file with it. To change your answers, run the script again with `--reconfigure` (bash) or `-Reconfigure` (PowerShell), or edit the settings file in any text editor. It's plain `NAME=value` lines.
 
@@ -59,7 +65,7 @@ If you're comfortable with code, open the script and change the values in the Se
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
 | `N8N_DATA_DIR` | 113 | 125 | Folder for n8n's database, encryption key and `task-runners.json`. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 117 | 129 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version |
+| `N8N_VERSION` | 117 | 129 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
 | `N8N_HOST_PORT` | 120 | 132 | The port you open in the browser |
 | `N8N_WEBHOOK_URL` | 125 | 138 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
 | `DOCKER_NETWORK` | 128 | 141 | Only if you already have a network with another name |
@@ -87,7 +93,7 @@ On Windows, from an elevated prompt:
 schtasks /create /tn "n8n nightly update" /sc daily /st 03:00 /tr "powershell -ExecutionPolicy Bypass -File C:\path\to\n8n-docker-task-runners\n8n-docker-task-runners-setup.ps1 -NoQuestions"
 ```
 
-`-NoQuestions` makes sure a scheduled run never sits waiting for an answer. The bash script detects cron on its own.
+`-NoQuestions` makes sure a scheduled run never sits waiting for an answer. The bash script detects cron on its own. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.
 
 ## Checking it worked
 
