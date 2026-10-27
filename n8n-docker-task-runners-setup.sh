@@ -428,16 +428,22 @@ pick_names() {
   done
 }
 
-run_questions() {
-  echo
-  echo "Each question comes with a suggested answer. If you're not sure, just"
-  echo "press Enter to take it. You can change any of this later by running the"
-  echo "script with --reconfigure."
+# new_screen "question 1 of 8": clears the screen so each question stands on
+# its own instead of scrolling under the ones before it.
+new_screen() {
+  clear 2>/dev/null || printf '[2J[H'
+  echo "Setting up n8n: $1"
+  echo "If you're not sure, press Enter to take the suggested answer."
+}
 
+run_questions() {
+  new_screen "question 1 of 8"
   ask N8N_DATA_DIR "Where should n8n keep its workflows, credentials and other data?"
 
+  new_screen "question 2 of 8"
   ask N8N_HOST_PORT "Which port number should n8n use? If you don't know what that means, just press Enter."
 
+  new_screen "question 3 of 8"
   local has_url=n
   [ -n "$N8N_WEBHOOK_URL" ] && has_url=y
   if ask_yes_no "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." "$has_url"; then
@@ -450,14 +456,14 @@ run_questions() {
     N8N_WEBHOOK_URL=""
   fi
 
+  new_screen "question 4 of 8"
   ask TASK_TIMEOUT "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(show_seconds "$TASK_TIMEOUT"). For 10 minutes, type 600."
 
+  new_screen "question 5 of 8"
   echo
-  echo "Next, which code libraries your Code nodes may load. Allowing everything"
-  echo "is easiest, but it also lets a Code node do more on the machine it runs"
-  echo "on. If you want to read up before deciding, see"
+  echo "Allowing everything is easiest, but it also lets a Code node do more on"
+  echo "the machine it runs on. If you want to read up before deciding, see"
   echo "https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners"
-
   local js_default=4 js_now=""
   if [ "$JS_BUILTIN_ALLOW" = "*" ] && [ "$JS_EXTERNAL_ALLOW" = "*" ]; then js_default=1
   elif [ "$JS_BUILTIN_ALLOW" = crypto ] && [ "$JS_EXTERNAL_ALLOW" = moment ]; then js_default=2
@@ -491,6 +497,11 @@ run_questions() {
 
   # Python's extra packages in the image are only the runner's own plumbing,
   # so they follow the standard library answer instead of getting a question.
+  new_screen "question 6 of 8"
+  echo
+  echo "Allowing everything is easiest, but it also lets a Code node do more on"
+  echo "the machine it runs on. If you want to read up before deciding, see"
+  echo "https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners"
   local py_common="json,datetime,math,re,random,statistics" py_default=4 py_now=""
   if [ "$PY_STDLIB_ALLOW" = "*" ]; then py_default=1
   elif [ "$PY_STDLIB_ALLOW" = "$py_common" ]; then py_default=2
@@ -517,6 +528,7 @@ run_questions() {
       ;;
   esac
 
+  new_screen "question 7 of 8"
   echo
   echo "n8n 2.0 and later switch off two nodes that can run commands and read"
   echo "files on this computer: Execute Command and Local File Trigger."
@@ -528,6 +540,7 @@ run_questions() {
     ENABLE_EXEC_NODES=no
   fi
 
+  new_screen "question 8 of 8"
   local nightly_default=y answer t
   [ "$NIGHTLY_TIME" = off ] && nightly_default=n
   if ask_yes_no "Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on at that time." "$nightly_default"; then
@@ -549,6 +562,9 @@ run_questions() {
   fi
   ASKED_QUESTIONS=yes
 
+  clear 2>/dev/null || printf '[2J[H'
+  echo "Setting up n8n: check your answers"
+  echo "You can change any of this later by running the script with --reconfigure."
   echo
   echo "Here's what you chose:"
   echo "  Data folder:                    $N8N_DATA_DIR"
@@ -658,8 +674,6 @@ elif [ -f "$SETTINGS_FILE" ]; then
 elif [ "$NO_QUESTIONS" = yes ] || [ ! -t 0 ]; then
   echo "No settings file next to the script; using the values written in it."
 else
-  echo "Looks like this is your first time running this, so I have a few"
-  echo "questions to get n8n set up the way you want."
   run_questions
 fi
 

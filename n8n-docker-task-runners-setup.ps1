@@ -404,16 +404,22 @@ function Read-Names([string]$Name, [string]$Question, [string]$List) {
     }
 }
 
-function Invoke-Questions {
-    Write-Host ''
-    Write-Host "Each question comes with a suggested answer. If you're not sure, just"
-    Write-Host 'press Enter to take it. You can change any of this later by running the'
-    Write-Host 'script with -Reconfigure.'
+# Clears the screen so each question stands on its own instead of scrolling
+# under the ones before it.
+function Show-NewScreen([string]$Title) {
+    try { Clear-Host } catch { Write-Host "" }
+    Write-Host "Setting up n8n: $Title"
+    Write-Host "If you're not sure, press Enter to take the suggested answer."
+}
 
+function Invoke-Questions {
+    Show-NewScreen 'question 1 of 8'
     Ask 'N8N_DATA_DIR' 'Where should n8n keep its workflows, credentials and other data?'
 
+    Show-NewScreen 'question 2 of 8'
     Ask 'N8N_HOST_PORT' "Which port number should n8n use? If you don't know what that means, just press Enter."
 
+    Show-NewScreen 'question 3 of 8'
     $hasUrl = if ($S.N8N_WEBHOOK_URL -ne '') { 'y' } else { 'n' }
     if (Ask-YesNo "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." $hasUrl) {
         while ($true) {
@@ -425,12 +431,13 @@ function Invoke-Questions {
         $S.N8N_WEBHOOK_URL = ''
     }
 
+    Show-NewScreen 'question 4 of 8'
     Ask 'TASK_TIMEOUT' "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(Show-Seconds $S.TASK_TIMEOUT). For 10 minutes, type 600."
 
+    Show-NewScreen 'question 5 of 8'
     Write-Host ''
-    Write-Host 'Next, which code libraries your Code nodes may load. Allowing everything'
-    Write-Host 'is easiest, but it also lets a Code node do more on the machine it runs'
-    Write-Host 'on. If you want to read up before deciding, see'
+    Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on'
+    Write-Host 'the machine it runs on. If you want to read up before deciding, see'
     Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners'
 
     $jsNow = ''
@@ -463,6 +470,11 @@ function Invoke-Questions {
 
     # Python's extra packages in the image are only the runner's own plumbing,
     # so they follow the standard library answer instead of getting a question.
+    Show-NewScreen 'question 6 of 8'
+    Write-Host ''
+    Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on'
+    Write-Host 'the machine it runs on. If you want to read up before deciding, see'
+    Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners'
     $pyCommon = 'json,datetime,math,re,random,statistics'
     $pyNow = ''
     $pyDefault = if ($S.PY_STDLIB_ALLOW -eq '*') { 1 }
@@ -487,12 +499,14 @@ function Invoke-Questions {
         }
     }
 
+    Show-NewScreen 'question 7 of 8'
     Write-Host ''
     Write-Host 'n8n 2.0 and later switch off two nodes that can run commands and read'
     Write-Host 'files on this computer: Execute Command and Local File Trigger.'
     $execDefault = if ($S.ENABLE_EXEC_NODES -eq 'yes') { 'y' } else { 'n' }
     $S.ENABLE_EXEC_NODES = if (Ask-YesNo 'Do you want them switched back on?' $execDefault) { 'yes' } else { 'no' }
 
+    Show-NewScreen 'question 8 of 8'
     $nightlyDefault = if ($S.NIGHTLY_TIME -eq 'off') { 'n' } else { 'y' }
     if (Ask-YesNo 'Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on and you need to be signed in at that time.' $nightlyDefault) {
         if ($S.NIGHTLY_TIME -eq 'off') { $S.NIGHTLY_TIME = '02:00' }
@@ -511,6 +525,9 @@ function Invoke-Questions {
     }
     $script:AskedQuestions = $true
 
+    try { Clear-Host } catch { Write-Host "" }
+    Write-Host 'Setting up n8n: check your answers'
+    Write-Host 'You can change any of this later by running the script with -Reconfigure.'
     Write-Host ''
     Write-Host "Here's what you chose:"
     Write-Host "  Data folder:                    $($S.N8N_DATA_DIR)"
@@ -613,8 +630,6 @@ if ($Reconfigure) {
 } elseif ($NoQuestions -or -not $interactive) {
     Write-Host 'No settings file next to the script; using the values written in it.'
 } else {
-    Write-Host 'Looks like this is your first time running this, so I have a few'
-    Write-Host 'questions to get n8n set up the way you want.'
     Invoke-Questions
 }
 
