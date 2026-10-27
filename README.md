@@ -40,6 +40,19 @@ n8n wiz won't move you to 3.0 on its own. From version 1.1.0, the nightly update
 
 Before you say yes, open n8n, go to **Settings > Migration Report**, fix what it flags, and back up your data folder.
 
+### What `latest` means
+
+Your settings file says `N8N_VERSION=latest`. In n8n wiz 1.1.0 and later, that **doesn't** mean Docker's `latest` tag. It means **the newest release of the major version you're on**. If you're on n8n 2.x, you stay on 2.x.
+
+- **Every run turns `latest` into an exact version.** That's why `docker ps` shows something like `n8nio/n8n:2.45.4`, not `n8nio/n8n:latest`.
+- **You get every 2.x update and stay on 2.x.** That holds even after n8n moves its own `latest` tag to 3.0 in December. The nightly log then says `n8n 3 is available. Staying on n8n 2 (2.x.y).`
+- **The nightly update never moves you to 3.x, and neither does `--no-questions` / `-NoQuestions`.** The only way to 3.x is to run the script yourself in Terminal or PowerShell and type `y` when it asks `Upgrade to n8n 3.0.0 now?`. The answer defaults to no.
+- **It never moves you back to an older release.** Beta and pre-release versions are skipped.
+- **If Docker Hub can't be reached,** it keeps the version you're running.
+- **To freeze on one exact release,** with no 2.x updates either, set `N8N_VERSION=2.45.4` (or whichever version) in the settings file.
+
+**Installed n8n wiz before 1.1.0?** Older scripts follow Docker's `latest` tag, so they'll move you to n8n 3.0 the night it goes stable. Replace your script with the newest release now; see [Updating n8n wiz](#updating-n8n-wiz). To see which version you have, run the script with `--help` (or `-Help`). Scripts older than 1.0.0 don't print a version.
+
 ## About this script
 
 It installs and upgrades a self-hosted n8n community edition with external task runners. Run it once to set things up. Run it again, by hand or on a schedule, to pull the latest n8n and restart cleanly. Your workflows and credentials stay put.
@@ -122,7 +135,7 @@ Made a mistake? After the last question, every answer is listed with a number. T
 
 Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
 
-The questions don't ask which n8n version to run. Every run updates to the newest release in the major version you're on, which is the point of the script. Moving up a major version, such as 2.x to 3.x, always asks first.
+The questions don't ask which n8n version to run. Every run updates to the newest release in the major version you're on, which is the point of the script. Moving up a major version, such as 2.x to 3.x, only happens when you run the script yourself and say yes. See [What `latest` means](#what-latest-means).
 
 The settings file has to sit in the same folder as the script. The script only looks for it there, so if you move the script, move the settings file with it. To change your answers, run the script again with `--reconfigure` (bash) or `-Reconfigure` (PowerShell), or edit the settings file in any text editor. It's plain `NAME=value` lines.
 
@@ -133,7 +146,7 @@ If you're comfortable with code, open the script and change the values in the Se
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
 | `N8N_DATA_DIR` | 123 | 156 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 129 | 162 | `latest` updates to the newest release in the major version you're on, and asks at the keyboard before a new major version. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_VERSION` | 129 | 162 | `latest` (the default) means the newest release of the major version you're on: 2.x stays on 2.x, and only a run at the keyboard can move you to 3.x, after asking. See [What `latest` means](#what-latest-means). A number such as `2.45.4` holds you on exactly that release. Both images always use the same version. Only changeable here or in the settings file |
 | `N8N_HOST_PORT` | 132 | 165 | The port you open in the browser |
 | `N8N_WEBHOOK_URL` | 137 | 171 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
 | `DOCKER_NETWORK` | 140 | 174 | Only if you already have a network with another name |
