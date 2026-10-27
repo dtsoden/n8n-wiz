@@ -1,5 +1,7 @@
 # n8n with external task runners on Docker
 
+[![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-docker-task-runners?style=social)](https://github.com/dtsoden/n8n-docker-task-runners)
+
 One script that installs, upgrades and restarts a self-hosted n8n community edition with external task runners, on macOS, Linux or Windows. Run it once to set things up. Run it again, by hand or on a schedule, to pull the latest n8n and restart cleanly. Your workflows and credentials stay put.
 
 I wrote it because keeping a community edition current by hand got old: stop the containers, pull new images, remember every flag, start them again. I've run this script for over a year, most of that time automatically every night, and my instance stays current without me touching it. When n8n moved Code node execution to external task runners, the script grew to set those up too.
@@ -16,6 +18,8 @@ Two containers on one Docker network:
 - `n8n-runners` uses the `n8nio/runners` image. A launcher inside it starts a JavaScript runner and a Python runner, which connect to the broker with a shared token and run your Code nodes outside the n8n process. The n8n docs recommend this external mode for production.
 
 Your data lives in a folder on your machine, so replacing the containers doesn't touch it. That's what makes the nightly run safe.
+
+Inside that data folder there's also a `files` folder for the Read/Write Files from Disk node. Since n8n 2.0 that node can only reach `/home/node/.n8n-files`, a folder inside the container that would normally be wiped on every update. The script links it to `files` on your machine instead. In the node, use paths such as `/home/node/.n8n-files/report.csv`. Files written there survive updates and show up on your machine, and anything you drop into `files` is there for your workflows to read.
 
 ## Requirements
 
@@ -53,7 +57,7 @@ Then open http://localhost:5678 (or the port you chose).
 3. It starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
 4. The first time, or with `--reconfigure`, it asks eight questions, one per screen, then shows all your answers on one numbered summary screen. Type a number there to redo that question, or press Enter to save. Later runs skip this and read the saved answers.
 5. It finishes the downloads. Only then does it remove the old containers, so a failed download leaves your current n8n running.
-6. It creates the Docker network if needed, writes `task-runners.json` to your data folder, and starts the two containers.
+6. It creates the Docker network and the data and `files` folders if needed, writes `task-runners.json` to your data folder, and starts the two containers.
 7. If you answered the questions, it sets up or removes the nightly schedule to match.
 8. It prints the address to open and how to check that the runners connected.
 
@@ -96,7 +100,7 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 114 | 126 | Folder for n8n's database, encryption key and `task-runners.json`. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_DATA_DIR` | 114 | 126 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
 | `N8N_VERSION` | 118 | 130 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
 | `N8N_HOST_PORT` | 121 | 133 | The port you open in the browser |
 | `N8N_WEBHOOK_URL` | 126 | 139 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |

@@ -726,6 +726,7 @@ $net = & docker network ls -q --filter "name=^$network$"
 if (-not $net) { Invoke-Docker network create $network | Out-Null }
 
 New-Item -ItemType Directory -Force -Path $S.N8N_DATA_DIR | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $S.N8N_DATA_DIR 'files') | Out-Null
 
 # ---- Launcher config: task-runners.json -------------------------------------
 # The runners container starts a small program called the launcher. It reads
@@ -851,6 +852,10 @@ $n8nArgs = @(
     '-p', "$($S.N8N_HOST_PORT):5678",
     # Keeps your data on your machine
     '-v', "$($S.N8N_DATA_DIR):/home/node/.n8n",
+    # n8n 2.x limits Read/Write Files from Disk to /home/node/.n8n-files.
+    # Linking it to a folder on your machine keeps those files through updates
+    # and lets you add or collect them.
+    '-v', "$(Join-Path $S.N8N_DATA_DIR 'files'):/home/node/.n8n-files",
     # Replaces the older WEBHOOK_URL, which n8n 2.x flags as deprecated.
     # n8n 1.x also needed N8N_RUNNERS_ENABLED=true; 2.x says it is no longer
     # needed, so add it back only if you pin a 1.x version.

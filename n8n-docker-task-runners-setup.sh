@@ -768,7 +768,7 @@ docker rm -f n8n n8n-runners 2>/dev/null || true
 echo "Creating network $DOCKER_NETWORK if needed..."
 docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK"
 
-mkdir -p "$N8N_DATA_DIR"
+mkdir -p "$N8N_DATA_DIR" "$N8N_DATA_DIR/files"
 
 # ---- Launcher config: task-runners.json -------------------------------------
 # The runners container starts a small program called the launcher. It reads
@@ -868,6 +868,11 @@ fi
 # ---- Start n8n --------------------------------------------------------------
 #   -p HOST:5678                 n8n listens on 5678 inside the container
 #   -v DATA:/home/node/.n8n      keeps your data on your machine
+#   -v DATA/files:/home/node/.n8n-files
+#                                n8n 2.x limits Read/Write Files from Disk to
+#                                /home/node/.n8n-files. Linking it to a folder
+#                                on your machine keeps those files through
+#                                updates and lets you add or collect them
 #   N8N_WEBHOOK_URL              replaces the older WEBHOOK_URL, which n8n 2.x
 #                                flags as deprecated at startup
 #   N8N_RUNNERS_MODE=external    run Code nodes in the sidecar, not inside n8n
@@ -895,6 +900,7 @@ docker run -d \
   --network "$DOCKER_NETWORK" \
   -p "$N8N_HOST_PORT:5678" \
   -v "$N8N_DATA_DIR:/home/node/.n8n" \
+  -v "$N8N_DATA_DIR/files:/home/node/.n8n-files" \
   -e N8N_WEBHOOK_URL="$WEBHOOK_URL_TO_USE" \
   -e N8N_RUNNERS_MODE=external \
   -e N8N_RUNNERS_AUTH_TOKEN="$N8N_RUNNERS_AUTH_TOKEN" \
