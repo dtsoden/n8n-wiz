@@ -875,6 +875,12 @@ if ($S.N8N_VERSION -eq 'latest') {
         # Already on something newer than latest, such as a beta. Leave it.
         $ImageTag = $current
     }
+    # Never move back to an older release: n8n doesn't support downgrades, and
+    # its database may already have the newer version's changes.
+    if ($current -match $versionPattern -and $ImageTag -match $versionPattern -and [version]$ImageTag -lt [version]$current) {
+        Write-Host "You're on n8n $current, newer than $ImageTag. Staying on $current." -ForegroundColor Yellow
+        $ImageTag = $current
+    }
 }
 
 # Start downloading both images now, so they're ready or nearly ready by the
