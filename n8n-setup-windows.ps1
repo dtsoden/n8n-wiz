@@ -26,18 +26,25 @@
 # =============================================================================
 #
 # What this script does
-#   1. Makes sure Docker is running, then works out your settings.
-#   2. Pulls the n8n and n8n runners images (same version for both).
-#   3. Removes any old "n8n" and "n8n-runners" containers.
-#   4. Writes the launcher config file task-runners.json to your data folder.
-#   5. Creates a shared random token and starts two containers on one network:
+#   1. Makes sure Docker is installed and running, offering to start it.
+#   2. Starts downloading the n8n and n8n runners images in the background
+#      (same version for both).
+#   3. Works out your settings, asking the setup questions the first time.
+#   4. Finishes the downloads, then stops and removes any old "n8n" and
+#      "n8n-runners" containers.
+#   5. Creates the data folder and its "files" folder, and writes the launcher
+#      config file task-runners.json there.
+#   6. Creates a shared random token and starts two containers on one network:
 #        n8n          the editor, API and webhooks, plus the task broker on 5679
 #        n8n-runners  the n8nio/runners sidecar that runs Code node JavaScript
 #                     and Python in its own container, away from n8n itself
+#   7. After the setup questions, adds or removes the nightly update.
 #
 #   Your workflows and credentials live in the data folder on your machine, so
 #   removing and recreating the containers does not delete them. That is what
-#   makes it safe to run this every night to stay on the latest n8n.
+#   makes it safe to run this every night to stay on the latest n8n. The
+#   "files" folder is where the Read/Write Files from Disk node reads and
+#   writes; inside n8n it is /home/node/.n8n-files.
 #
 #   This is the Windows version of n8n-setup-mac-linux.sh. The
 #   containers and settings are the same. The differences are Windows only:
@@ -92,15 +99,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 129  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 133  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 136  N8N_HOST_PORT       port you open in the browser
-#   Line 142  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 145  DOCKER_NETWORK      only if you already use a different network name
-#   Line 150  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 163 to 166  JS_* and PY_*  modules the Code node may import
-#   Line 171  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 176  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 136  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 140  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 143  N8N_HOST_PORT       port you open in the browser
+#   Line 149  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 152  DOCKER_NETWORK      only if you already use a different network name
+#   Line 157  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 170 to 173  JS_* and PY_*  modules the Code node may import
+#   Line 178  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 183  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1

@@ -109,15 +109,28 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 116 | 129 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 120 | 133 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 123 | 136 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 128 | 142 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 131 | 145 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 136 | 150 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 149-152 | 163-166 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 157 | 171 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 162 | 176 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_DATA_DIR` | 123 | 136 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 127 | 140 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 130 | 143 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 135 | 149 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 138 | 152 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 143 | 157 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 156-159 | 170-173 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 164 | 178 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 169 | 183 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+
+## Options
+
+Add one of these after the script's name when you run it. On Windows, use the form in brackets.
+
+| Option | What it does |
+|---|---|
+| `--reconfigure` (`-Reconfigure`) | Asks the setup questions again, with your current answers as the suggestions |
+| `--no-questions` (`-NoQuestions`) | Never asks anything. Uses the saved answers, or the values written in the script if there are none. Scheduled runs use this |
+| `--remove` (`-Remove`) | Uninstalls n8n. See "Removing it" below |
+| `--help` | Lists these options (Mac and Linux script only) |
+
+For example: `bash n8n-setup-mac-linux.sh --reconfigure`, or on Windows `powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1 -Reconfigure`.
 
 ## A word on the wildcards
 
@@ -147,7 +160,7 @@ schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -W
 
 Run the script with `--remove` (bash) or `-Remove` (PowerShell). It tells you what it's about to do and asks first. Then it removes the two containers, the Docker network, the n8n images, the nightly update, the saved answers and the nightly log.
 
-Your workflows, credentials and files are a separate question. They stay unless you type `delete` when asked, so pressing Enter by mistake can't wipe them. If you keep them, running the script again later brings n8n back with everything in place.
+Your workflows, credentials and files are a separate question. They stay unless you type `delete` when asked, so pressing Enter by mistake can't wipe them. If you keep them and want n8n back later, run the script again. Your saved answers are gone, so it asks the setup questions again. Give the same data folder as before, and your workflows and credentials come back with it.
 
 ## Found a bug?
 
