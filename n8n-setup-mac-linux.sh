@@ -22,7 +22,7 @@
 # SOFTWARE.
 
 # =============================================================================
-# n8n with external task runners on Docker (macOS and Linux)
+# n8n wiz: install n8n and keep it up to date (macOS and Linux)
 # https://github.com/dtsoden/n8n-docker-task-runners
 # =============================================================================
 #

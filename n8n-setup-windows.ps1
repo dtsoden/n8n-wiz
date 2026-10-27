@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 # =============================================================================
-# n8n with external task runners on Docker Desktop (Windows, PowerShell)
+# n8n wiz: install n8n and keep it up to date (Windows, PowerShell)
 # https://github.com/dtsoden/n8n-docker-task-runners
 # =============================================================================
 #

@@ -1,4 +1,4 @@
-# n8n with external task runners on Docker
+# n8n wiz: install n8n and keep it up to date with one file
 
 [![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-docker-task-runners?style=social&label=Star)](https://github.com/dtsoden/n8n-docker-task-runners)
 
