@@ -109,15 +109,15 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 123 | 136 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 127 | 140 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 130 | 143 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 135 | 149 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 138 | 152 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 143 | 157 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 156-159 | 170-173 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 164 | 178 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 169 | 183 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_DATA_DIR` | 123 | 160 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 127 | 164 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 130 | 167 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 135 | 173 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 138 | 176 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 143 | 181 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 156-159 | 194-197 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 164 | 202 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 169 | 207 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## Options
 

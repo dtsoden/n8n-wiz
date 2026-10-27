@@ -99,15 +99,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 136  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 140  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 143  N8N_HOST_PORT       port you open in the browser
-#   Line 149  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 152  DOCKER_NETWORK      only if you already use a different network name
-#   Line 157  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 170 to 173  JS_* and PY_*  modules the Code node may import
-#   Line 178  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 183  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 160  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 164  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 167  N8N_HOST_PORT       port you open in the browser
+#   Line 173  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 176  DOCKER_NETWORK      only if you already use a different network name
+#   Line 181  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 194 to 197  JS_* and PY_*  modules the Code node may import
+#   Line 202  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 207  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
@@ -125,6 +125,30 @@ param(
     [switch]$NoQuestions,
     [switch]$Remove
 )
+
+# Typed at a PowerShell prompt, --remove (two dashes) or a plain "remove" is
+# not treated as an option; it lands in $args and would be silently ignored,
+# so the script would just update n8n. Accept the usual spellings of each
+# option and stop on anything else.
+foreach ($word in $args) {
+    switch -Regex ($word) {
+        '^(--?|/)?remove$'        { $Remove = [switch]$true }
+        '^(--?|/)?reconfigure$'   { $Reconfigure = [switch]$true }
+        '^(--?|/)?no-?questions$' { $NoQuestions = [switch]$true }
+        '^(--?|/)?(h|help|\?)$' {
+            Write-Host 'Options:'
+            Write-Host '  -Reconfigure   ask the setup questions again and save new answers'
+            Write-Host '  -NoQuestions   never ask; use the saved answers'
+            Write-Host '  -Remove        uninstall n8n; asks before deleting your workflows'
+            exit 0
+        }
+        default {
+            Write-Host "I don't recognize this option: $word" -ForegroundColor Red
+            Write-Host 'The options are -Reconfigure, -NoQuestions and -Remove.'
+            exit 1
+        }
+    }
+}
 
 # ---- Settings ---------------------------------------------------------------
 # Used when there is no settings file. The questions also offer these values

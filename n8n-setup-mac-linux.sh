@@ -210,10 +210,11 @@ NO_QUESTIONS=no
 REMOVE=no
 for arg in "$@"; do
   case "$arg" in
-    --reconfigure)  RECONFIGURE=yes ;;
-    --no-questions) NO_QUESTIONS=yes ;;
-    --remove)       REMOVE=yes ;;
-    -h|--help)
+    # The usual spellings all work, so -remove or plain "remove" don't fail.
+    --reconfigure|-reconfigure|reconfigure)  RECONFIGURE=yes ;;
+    --no-questions|-no-questions|no-questions|--noquestions|-noquestions) NO_QUESTIONS=yes ;;
+    --remove|-remove|remove)  REMOVE=yes ;;
+    -h|--help|help)
       echo "Usage: $0 [--reconfigure | --no-questions | --remove]"
       echo "  --reconfigure   ask the setup questions again and save new answers"
       echo "  --no-questions  never ask; use the settings file if there is one,"
