@@ -289,9 +289,9 @@ ask() {
 ask_yes_no() {
   local answer hint
   if [ "$2" = y ]; then
-    hint="Press Enter for yes, or type no: "
+    hint="Press Enter for yes, or type n for no: "
   else
-    hint="Press Enter for no, or type yes: "
+    hint="Press Enter for no, or type y for yes: "
   fi
   echo
   echo "$1"
@@ -302,7 +302,7 @@ ask_yes_no() {
       [Yy]*) return 0 ;;
       [Nn]*) return 1 ;;
     esac
-    echo "  Please type yes or no."
+    echo "  Please type y for yes or n for no."
   done
 }
 

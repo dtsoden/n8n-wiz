@@ -282,7 +282,7 @@ function Ask([string]$Name, [string]$Question) {
 # Prints the question and returns $true for yes. $Default ('y' or 'n') is what
 # pressing Enter means.
 function Ask-YesNo([string]$Question, [string]$Default) {
-    $hint = if ($Default -eq 'y') { '  Press Enter for yes, or type no' } else { '  Press Enter for no, or type yes' }
+    $hint = if ($Default -eq 'y') { '  Press Enter for yes, or type n for no' } else { '  Press Enter for no, or type y for yes' }
     Write-Host ''
     Write-Host $Question
     while ($true) {
@@ -290,7 +290,7 @@ function Ask-YesNo([string]$Question, [string]$Default) {
         if ($answer -eq '') { $answer = $Default }
         if ($answer -match '^[Yy]') { return $true }
         if ($answer -match '^[Nn]') { return $false }
-        Write-Host '  Please type yes or no.' -ForegroundColor Yellow
+        Write-Host '  Please type y for yes or n for no.' -ForegroundColor Yellow
     }
 }
 
