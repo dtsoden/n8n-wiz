@@ -90,14 +90,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 125  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 129  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 132  N8N_HOST_PORT       port you open in the browser
-#   Line 138  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 141  DOCKER_NETWORK      only if you already use a different network name
-#   Line 146  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 159 to 162  JS_* and PY_*  modules the Code node may import
-#   Line 167  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 126  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 130  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 133  N8N_HOST_PORT       port you open in the browser
+#   Line 139  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 142  DOCKER_NETWORK      only if you already use a different network name
+#   Line 147  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 160 to 163  JS_* and PY_*  modules the Code node may import
+#   Line 168  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 173  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-docker-task-runners-setup.ps1
@@ -165,12 +166,37 @@ $S = [ordered]@{
     # 'yes' turns them back on (it sets NODES_EXCLUDE=[], which loads every
     # node). 'no' leaves n8n's default in place.
     ENABLE_EXEC_NODES = 'yes'
+
+    # When the script runs by itself every night, as 24-hour HH:MM, or 'off'.
+    # The setup questions add or remove the scheduled task for you. If you edit
+    # this file instead, create the task yourself (the README shows how).
+    NIGHTLY_TIME      = '02:00'
 }
 
 # ---- Nothing below this line needs editing ----------------------------------
 
 # The settings file lives next to this script, wherever it is run from.
 $SettingsFile = Join-Path $PSScriptRoot 'n8n-docker-task-runners-settings.env'
+
+# Scheduled runs (always -NoQuestions) have no window, so they keep a log
+# next to the script.
+if ($NoQuestions) {
+    Start-Transcript -LiteralPath (Join-Path $PSScriptRoot 'n8n-nightly.log') -Append | Out-Null
+}
+
+# Stops the script with an error and points to the place to report a bug.
+function Stop-Script {
+    Write-Host ''
+    Write-Host 'If this looks like a bug, please report it at'
+    Write-Host 'https://github.com/dtsoden/n8n-docker-task-runners/issues/new'
+    exit 1
+}
+
+# An unexpected error stops the script the same way.
+trap {
+    Write-Host "Something went wrong: $($_.Exception.Message)" -ForegroundColor Red
+    Stop-Script
+}
 
 # ---- Checking values --------------------------------------------------------
 # Every value is checked before use, whether it came from an answer, the
@@ -188,6 +214,7 @@ function Test-Setting([string]$Name, [string]$Value) {
         'JS_*'              { return $Value -match '^[A-Za-z0-9_.,*@/-]*$' }
         'PY_*'              { return $Value -match '^[A-Za-z0-9_.,*@/-]*$' }
         'ENABLE_EXEC_NODES' { return ($Value -eq 'yes') -or ($Value -eq 'no') }
+        'NIGHTLY_TIME'      { return ($Value -eq 'off') -or ($Value -match '^([01][0-9]|2[0-3]):[0-5][0-9]$') }
     }
     return $false
 }
@@ -208,7 +235,7 @@ function Read-SettingsFile {
         if (-not (Test-Setting $key $value)) {
             Write-Host "The settings file has a value that doesn't work for ${key}: $value" -ForegroundColor Red
             Write-Host "Fix it in $SettingsFile, or run with -Reconfigure."
-            exit 1
+            Stop-Script
         }
         $S[$key] = $value
     }
@@ -272,6 +299,28 @@ function Show-Value([string]$Value) {
     if ($Value -eq '') { return 'nothing' }
     if ($Value -eq '*') { return 'everything' }
     return $Value
+}
+
+# ConvertTo-Time '2am' returns '02:00'. It understands 2, 2:30, 14:30, 2am,
+# 2:30 pm and so on, and returns '' for anything else.
+function ConvertTo-Time([string]$Text) {
+    $s = $Text.ToLower() -replace '[\s.]', ''
+    if ($s -notmatch '^([0-9]{1,2})(:([0-9]{2}))?(am|pm|a|p)?$') { return '' }
+    $h = [int]$Matches[1]
+    $m = if ($Matches[3]) { [int]$Matches[3] } else { 0 }
+    $half = $Matches[4]
+    if ($half) {
+        if ($h -lt 1 -or $h -gt 12) { return '' }
+        if ($h -eq 12) { $h = 0 }
+        if ($half.StartsWith('p')) { $h += 12 }
+    }
+    if ($h -gt 23 -or $m -gt 59) { return '' }
+    return '{0:D2}:{1:D2}' -f $h, $m
+}
+
+# Show-Time '14:30' returns '2:30 PM'.
+function Show-Time([string]$Time) {
+    return ([datetime]::ParseExact($Time, 'HH:mm', [Globalization.CultureInfo]::InvariantCulture)).ToString('h:mm tt', [Globalization.CultureInfo]::InvariantCulture)
 }
 
 # Show-Seconds 300 returns "300 seconds (5 minutes)" so nobody has to do the math.
@@ -444,6 +493,24 @@ function Invoke-Questions {
     $execDefault = if ($S.ENABLE_EXEC_NODES -eq 'yes') { 'y' } else { 'n' }
     $S.ENABLE_EXEC_NODES = if (Ask-YesNo 'Do you want them switched back on?' $execDefault) { 'yes' } else { 'no' }
 
+    $nightlyDefault = if ($S.NIGHTLY_TIME -eq 'off') { 'n' } else { 'y' }
+    if (Ask-YesNo 'Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on and you need to be signed in at that time.' $nightlyDefault) {
+        if ($S.NIGHTLY_TIME -eq 'off') { $S.NIGHTLY_TIME = '02:00' }
+        Write-Host ''
+        Write-Host 'What time should it run? n8n is down for a few seconds while it updates,'
+        Write-Host 'so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00.'
+        while ($true) {
+            $answer = Read-Host "  Press Enter for $(Show-Time $S.NIGHTLY_TIME), or type a time"
+            if ($answer -eq '') { $answer = $S.NIGHTLY_TIME }
+            $time = ConvertTo-Time $answer
+            if ($time -ne '') { $S.NIGHTLY_TIME = $time; break }
+            Write-Host "  Sorry, I didn't understand that time. Try something like 2am or 23:00." -ForegroundColor Yellow
+        }
+    } else {
+        $S.NIGHTLY_TIME = 'off'
+    }
+    $script:AskedQuestions = $true
+
     Write-Host ''
     Write-Host "Here's what you chose:"
     Write-Host "  Data folder:                    $($S.N8N_DATA_DIR)"
@@ -454,6 +521,11 @@ function Invoke-Questions {
     Write-Host "  JavaScript npm packages:        $(Show-Value $S.JS_EXTERNAL_ALLOW)"
     Write-Host "  Python libraries:               $(Show-Value $S.PY_STDLIB_ALLOW)"
     Write-Host "  Execute Command and Local File: $($S.ENABLE_EXEC_NODES)"
+    if ($S.NIGHTLY_TIME -eq 'off') {
+        Write-Host '  Nightly update:                 off'
+    } else {
+        Write-Host "  Nightly update:                 every night at $(Show-Time $S.NIGHTLY_TIME)"
+    }
     if (-not (Ask-YesNo "Does that look right? I'll save it and start n8n." 'y')) {
         Write-Host "OK, nothing was changed. Run the script again when you're ready."
         exit 0
@@ -471,7 +543,7 @@ $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedire
 
 if ($Reconfigure -and -not $interactive) {
     Write-Host '-Reconfigure needs someone at the keyboard to answer the questions.' -ForegroundColor Red
-    exit 1
+    Stop-Script
 }
 
 # Saved answers are loaded now so the downloads below fetch the right version.
@@ -487,7 +559,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "Docker isn't installed on this computer, and n8n runs inside it." -ForegroundColor Red
     Write-Host 'Install Docker Desktop from https://www.docker.com/products/docker-desktop/'
     Write-Host 'start it, then run this script again.'
-    exit 1
+    Stop-Script
 }
 
 if (-not (Test-DockerRunning)) {
@@ -496,7 +568,7 @@ if (-not (Test-DockerRunning)) {
         Write-Host "Docker isn't running. Trying to start it..."
     } elseif (-not (Ask-YesNo "Docker is installed but isn't running. Do you want me to start it?" 'y')) {
         Write-Host 'OK. Start Docker Desktop yourself, then run this script again.'
-        exit 1
+        Stop-Script
     }
     if (Test-Path -LiteralPath $dockerDesktop) {
         Start-Process -FilePath $dockerDesktop
@@ -511,7 +583,7 @@ if (-not (Test-DockerRunning)) {
             Write-Host ''
             Write-Host "Docker still isn't running after 3 minutes. Open Docker Desktop yourself," -ForegroundColor Red
             Write-Host "wait until it says it's running, then run this script again."
-            exit 1
+            Stop-Script
         }
         Write-Host '.' -NoNewline
         Start-Sleep -Seconds 3
@@ -550,7 +622,7 @@ if ($Reconfigure) {
 foreach ($key in @($S.Keys)) {
     if (-not (Test-Setting $key $S[$key])) {
         Write-Host "The value for $key doesn't work: $($S[$key])" -ForegroundColor Red
-        exit 1
+        Stop-Script
     }
 }
 
@@ -565,7 +637,7 @@ function Invoke-Docker {
     & docker @args
     if ($LASTEXITCODE -ne 0) {
         Write-Host "docker $($args -join ' ') failed with exit code $LASTEXITCODE" -ForegroundColor Red
-        exit 1
+        Stop-Script
     }
 }
 
@@ -771,6 +843,33 @@ Write-Host ''
 Write-Host "Done. Open http://localhost:$($S.N8N_HOST_PORT)"
 Write-Host 'Check the runners connected with: docker logs n8n'
 Write-Host '(look for two lines starting with: Registered runner)'
+
+# ---- Nightly schedule -------------------------------------------------------
+# Only after the questions, so a nightly run never rewrites its own schedule.
+# The task runs as you, only while you're signed in, which is also when Docker
+# Desktop is running. Creating it that way doesn't need an administrator.
+
+if ($script:AskedQuestions) {
+    Write-Host ''
+    $taskName = 'n8n nightly update'
+    try {
+        if ($S.NIGHTLY_TIME -eq 'off') {
+            if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+                Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+                Write-Host 'The nightly update is turned off.'
+            }
+        } else {
+            $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoQuestions"
+            $trigger = New-ScheduledTaskTrigger -Daily -At $S.NIGHTLY_TIME
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Description 'Keeps n8n up to date. Created by n8n-docker-task-runners-setup.ps1.' -Force -ErrorAction Stop | Out-Null
+            Write-Host "n8n will update itself every night at $(Show-Time $S.NIGHTLY_TIME)."
+            Write-Host "Each run is logged to $(Join-Path $PSScriptRoot 'n8n-nightly.log')"
+        }
+    } catch {
+        Write-Host "I couldn't set up the nightly update: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host 'The README shows how to add it by hand.'
+    }
+}
 
 # Only when someone is watching, so the nightly log stays quiet.
 if ($interactive -and -not $NoQuestions) {

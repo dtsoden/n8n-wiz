@@ -4,3 +4,6 @@ n8n-docker-task-runners-settings.env
 
 # Personal files and post drafts that never get published
 _private/
+
+# Log of the nightly runs the script schedules for itself
+n8n-nightly.log

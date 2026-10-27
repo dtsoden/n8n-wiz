@@ -86,14 +86,15 @@
 #   and the script falls back to /dev/urandom if it is missing.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 113  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 117  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 120  N8N_HOST_PORT       port you open in the browser
-#   Line 125  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 128  DOCKER_NETWORK      only if you already use a different network name
-#   Line 133  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 146 to 149  JS_* and PY_*  modules the Code node may import
-#   Line 154  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 114  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 118  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 121  N8N_HOST_PORT       port you open in the browser
+#   Line 126  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 129  DOCKER_NETWORK      only if you already use a different network name
+#   Line 134  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 147 to 150  JS_* and PY_*  modules the Code node may import
+#   Line 155  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 160  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run
 #   chmod +x n8n-docker-task-runners-setup.sh
@@ -153,15 +154,28 @@ PY_EXTERNAL_ALLOW="*"
 # node). "no" leaves n8n's default in place.
 ENABLE_EXEC_NODES="yes"
 
+# When the script runs by itself every night, as 24-hour HH:MM, or "off". The
+# setup questions add or remove the cron entry for you. If you edit this file
+# instead, add the cron line yourself (the README shows it).
+NIGHTLY_TIME="02:00"
+
 # ---- Nothing below this line needs editing ----------------------------------
 
 # Stop at the first command that fails.
 set -e
 
+# Whenever the script stops early, point to the place to report a bug.
+trap 'status=$?
+if [ "$status" -ne 0 ]; then
+  echo
+  echo "If this looks like a bug, please report it at"
+  echo "https://github.com/dtsoden/n8n-docker-task-runners/issues/new"
+fi' EXIT
+
 # The settings file lives next to this script, wherever the script is run from.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETTINGS_FILE="$SCRIPT_DIR/n8n-docker-task-runners-settings.env"
-SETTING_NAMES="N8N_DATA_DIR N8N_VERSION N8N_HOST_PORT N8N_WEBHOOK_URL DOCKER_NETWORK TASK_TIMEOUT JS_BUILTIN_ALLOW JS_EXTERNAL_ALLOW PY_STDLIB_ALLOW PY_EXTERNAL_ALLOW ENABLE_EXEC_NODES"
+SETTING_NAMES="N8N_DATA_DIR N8N_VERSION N8N_HOST_PORT N8N_WEBHOOK_URL DOCKER_NETWORK TASK_TIMEOUT JS_BUILTIN_ALLOW JS_EXTERNAL_ALLOW PY_STDLIB_ALLOW PY_EXTERNAL_ALLOW ENABLE_EXEC_NODES NIGHTLY_TIME"
 
 RECONFIGURE=no
 NO_QUESTIONS=no
@@ -189,6 +203,7 @@ RE_NAME='^[A-Za-z0-9._-]+$'
 RE_NUMBER='^[0-9]+$'
 RE_URL='^https?://[^[:space:]]+$'
 RE_ALLOW='^[A-Za-z0-9_.,*@/-]*$'
+RE_TIME='^([01][0-9]|2[0-3]):[0-5][0-9]$'
 
 valid() {
   case "$1" in
@@ -199,6 +214,7 @@ valid() {
     TASK_TIMEOUT)               [[ "$2" =~ $RE_NUMBER ]] && [ "$2" -ge 1 ] ;;
     JS_*|PY_*)                  [[ "$2" =~ $RE_ALLOW ]] ;;
     ENABLE_EXEC_NODES)          [ "$2" = yes ] || [ "$2" = no ] ;;
+    NIGHTLY_TIME)               [ "$2" = off ] || [[ "$2" =~ $RE_TIME ]] ;;
     *)                          false ;;
   esac
 }
@@ -300,6 +316,33 @@ show_value() {
 }
 
 # show_seconds 300 prints "300 seconds (5 minutes)" so nobody has to do the math.
+# normalize_time "2am" prints 02:00. It understands 2, 2:30, 14:30, 2am, 2:30 pm
+# and so on, and prints nothing for anything else.
+RE_TIME_INPUT='^([0-9]{1,2})(:([0-9]{2}))?(am|pm|a|p)?$'
+normalize_time() {
+  local s h m
+  s="$(echo "$1" | tr 'A-Z' 'a-z' | tr -d ' .')"
+  if ! [[ "$s" =~ $RE_TIME_INPUT ]]; then return 0; fi
+  h=$((10#${BASH_REMATCH[1]}))
+  m=$((10#${BASH_REMATCH[3]:-0}))
+  case "${BASH_REMATCH[4]}" in
+    a|am|p|pm)
+      if [ "$h" -lt 1 ] || [ "$h" -gt 12 ]; then return 0; fi
+      if [ "$h" -eq 12 ]; then h=0; fi
+      case "${BASH_REMATCH[4]}" in p|pm) h=$((h + 12)) ;; esac ;;
+  esac
+  if [ "$h" -le 23 ] && [ "$m" -le 59 ]; then printf '%02d:%02d' "$h" "$m"; fi
+}
+
+# show_time 14:30 prints "2:30 PM".
+show_time() {
+  local h=$((10#${1%%:*})) m="${1#*:}" half=AM
+  if [ "$h" -ge 12 ]; then half=PM; fi
+  h=$((h % 12))
+  if [ "$h" -eq 0 ]; then h=12; fi
+  echo "$h:$m $half"
+}
+
 show_seconds() {
   local s="$1" m=$(( $1 / 60 )) r=$(( $1 % 60 )) out=""
   if [ "$s" -lt 60 ]; then
@@ -485,6 +528,27 @@ run_questions() {
     ENABLE_EXEC_NODES=no
   fi
 
+  local nightly_default=y answer t
+  [ "$NIGHTLY_TIME" = off ] && nightly_default=n
+  if ask_yes_no "Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on at that time." "$nightly_default"; then
+    [ "$NIGHTLY_TIME" = off ] && NIGHTLY_TIME="02:00"
+    echo
+    echo "What time should it run? n8n is down for a few seconds while it updates,"
+    echo "so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00."
+    while true; do
+      read -r -p "  Press Enter for $(show_time "$NIGHTLY_TIME"), or type a time: " answer
+      t="$(normalize_time "${answer:-$NIGHTLY_TIME}")"
+      if [ -n "$t" ]; then
+        NIGHTLY_TIME="$t"
+        break
+      fi
+      echo "  Sorry, I didn't understand that time. Try something like 2am or 23:00."
+    done
+  else
+    NIGHTLY_TIME=off
+  fi
+  ASKED_QUESTIONS=yes
+
   echo
   echo "Here's what you chose:"
   echo "  Data folder:                    $N8N_DATA_DIR"
@@ -495,6 +559,11 @@ run_questions() {
   echo "  JavaScript npm packages:        $(show_value "$JS_EXTERNAL_ALLOW")"
   echo "  Python libraries:               $(show_value "$PY_STDLIB_ALLOW")"
   echo "  Execute Command and Local File: $ENABLE_EXEC_NODES"
+  if [ "$NIGHTLY_TIME" = off ]; then
+    echo "  Nightly update:                 off"
+  else
+    echo "  Nightly update:                 every night at $(show_time "$NIGHTLY_TIME")"
+  fi
   if ! ask_yes_no "Does that look right? I'll save it and start n8n." y; then
     echo "OK, nothing was changed. Run the script again when you're ready."
     exit 0
@@ -789,6 +858,37 @@ echo
 echo "Done. Open http://localhost:$N8N_HOST_PORT"
 echo "Check the runners connected with: docker logs n8n"
 echo "(look for two lines starting with: Registered runner)"
+
+# ---- Nightly schedule -------------------------------------------------------
+# Only after the questions, so a nightly run never rewrites its own schedule.
+# The cron entry is found again by the tag at the end of its line. PATH is
+# copied in because cron's own PATH usually can't find docker.
+
+CRON_TAG="# n8n-docker-task-runners nightly update"
+if [ "$ASKED_QUESTIONS" = yes ]; then
+  echo
+  if ! command -v crontab >/dev/null 2>&1; then
+    echo "I couldn't find cron on this computer, so I can't set up the nightly"
+    echo "update. The README shows other ways to schedule it."
+  else
+    other_lines="$(crontab -l 2>/dev/null | grep -vF "$CRON_TAG" || true)"
+    if [ "$NIGHTLY_TIME" = off ]; then
+      if crontab -l 2>/dev/null | grep -qF "$CRON_TAG"; then
+        printf '%s\n' "$other_lines" | crontab -
+        echo "The nightly update is turned off."
+      fi
+    else
+      script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+      cron_line="$((10#${NIGHTLY_TIME#*:})) $((10#${NIGHTLY_TIME%%:*})) * * * PATH='$PATH' '$script_path' --no-questions >> '$SCRIPT_DIR/n8n-nightly.log' 2>&1 $CRON_TAG"
+      if { if [ -n "$other_lines" ]; then printf '%s\n' "$other_lines"; fi; echo "$cron_line"; } | crontab -; then
+        echo "n8n will update itself every night at $(show_time "$NIGHTLY_TIME")."
+        echo "Each run is logged to $SCRIPT_DIR/n8n-nightly.log"
+      else
+        echo "I couldn't set up the nightly update. The README shows how to add it by hand."
+      fi
+    fi
+  fi
+fi
 
 # Only when someone is watching, so the nightly log stays quiet.
 if [ -t 0 ]; then

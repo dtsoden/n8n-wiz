@@ -50,7 +50,7 @@ Then open http://localhost:5678 (or the port you chose).
 
 ### Answer the questions
 
-Run the script. It first checks that Docker is installed and running, and offers to start Docker if it isn't. The first time, it then asks a few questions, each with a suggested answer you take by pressing Enter: where to keep your data, which port, whether n8n has a public address, how long a Code node may run, which libraries JavaScript and Python Code nodes may load, and whether to turn Execute Command and Local File Trigger back on. The images download in the background while you answer. Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
+Run the script. It first checks that Docker is installed and running, and offers to start Docker if it isn't. The first time, it then asks a few questions, each with a suggested answer you take by pressing Enter: where to keep your data, which port, whether n8n has a public address, how long a Code node may run, which libraries JavaScript and Python Code nodes may load, whether to turn Execute Command and Local File Trigger back on, and whether it should run by itself every night and at what time. The images download in the background while you answer. Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
 
 For the libraries you get a menu: everything that comes installed, a short common set, none, or your own pick. If you pick your own, the script reads the full list from the runners image you're about to run and shows it so you can copy names. It turns down any name that isn't on the list.
 
@@ -64,14 +64,15 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 113 | 125 | Folder for n8n's database, encryption key and `task-runners.json`. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 117 | 129 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 120 | 132 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 125 | 138 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 128 | 141 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 133 | 146 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 146-149 | 159-162 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 154 | 167 | `yes` turns Execute Command and Local File Trigger back on |
+| `N8N_DATA_DIR` | 114 | 126 | Folder for n8n's database, encryption key and `task-runners.json`. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 118 | 130 | `latest` upgrades on every run. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 121 | 133 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 126 | 139 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 129 | 142 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 134 | 147 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 147-150 | 160-163 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 155 | 168 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 160 | 173 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## A word on the wildcards
 
@@ -81,19 +82,25 @@ By default the scripts allow every Python module available in the runners image 
 
 Each run pulls the images first and only then replaces the containers, so a failed pull leaves your current n8n running. n8n is down for the few seconds it takes to restart, so pick a quiet hour. Executions running at that moment are interrupted.
 
-Run the script once by hand first so the settings file exists. After that, on macOS or Linux, a cron entry like this runs it at 3 a.m. (edit with `crontab -e`, and use full paths):
+The easy way is the last setup question. Say yes, give it a time such as `2am`, and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, the first time the script edits your crontab, macOS may ask whether Terminal may administer your computer. Say yes.
+
+If you edit the script instead of answering questions, schedule it yourself. On macOS or Linux, a cron entry like this runs it at 2 a.m. (edit with `crontab -e`, and use full paths). Cron's own `PATH` often can't find `docker`, so the line sets one:
 
 ```
-0 3 * * * /path/to/n8n-docker-task-runners/n8n-docker-task-runners-setup.sh >> /path/to/n8n-update.log 2>&1
+0 2 * * * PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin /path/to/n8n-docker-task-runners/n8n-docker-task-runners-setup.sh --no-questions >> /path/to/n8n-nightly.log 2>&1
 ```
 
-On Windows, from an elevated prompt:
+On Windows:
 
 ```
-schtasks /create /tn "n8n nightly update" /sc daily /st 03:00 /tr "powershell -ExecutionPolicy Bypass -File C:\path\to\n8n-docker-task-runners\n8n-docker-task-runners-setup.ps1 -NoQuestions"
+schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\path\to\n8n-docker-task-runners\n8n-docker-task-runners-setup.ps1 -NoQuestions"
 ```
 
-`-NoQuestions` makes sure a scheduled run never sits waiting for an answer. The bash script detects cron on its own. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.
+`--no-questions` and `-NoQuestions` make sure a scheduled run never sits waiting for an answer. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.
+
+## Found a bug?
+
+If the script stops with an error, it ends with a link to report it. You can also open an issue directly at https://github.com/dtsoden/n8n-docker-task-runners/issues/new. Include the last lines the script printed and which operating system you're on.
 
 ## Checking it worked
 
