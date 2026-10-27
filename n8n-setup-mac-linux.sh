@@ -170,6 +170,9 @@ NIGHTLY_TIME="02:00"
 
 # ---- Nothing below this line needs editing ----------------------------------
 
+# Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
+SCRIPT_VERSION="1.0.0"
+
 # Stop at the first command that fails.
 set -e
 
@@ -189,8 +192,9 @@ fi
 
 # Whenever the script stops early, point to the place to report a bug.
 # Ctrl+C (status 130) is a choice to quit, not a bug, so it gets no link.
+# Neither does a stop the script makes on purpose (NOT_A_BUG=yes).
 trap 'status=$?
-if [ "$status" -ne 0 ] && [ "$status" -ne 130 ]; then
+if [ "$status" -ne 0 ] && [ "$status" -ne 130 ] && [ "${NOT_A_BUG:-}" != yes ]; then
   echo
   echo "${C_WARN}If this looks like a bug, please report it at${C_OFF}"
   echo "${C_WARN}https://github.com/dtsoden/n8n-docker-task-runners/issues/new${C_OFF}"
@@ -215,6 +219,7 @@ for arg in "$@"; do
     --no-questions|-no-questions|no-questions|--noquestions|-noquestions) NO_QUESTIONS=yes ;;
     --remove|-remove|remove)  REMOVE=yes ;;
     -h|--help|help)
+      echo "n8n-setup-mac-linux.sh version $SCRIPT_VERSION"
       echo "Usage: $0 [--reconfigure | --no-questions | --remove]"
       echo "  --reconfigure   ask the setup questions again and save new answers"
       echo "  --no-questions  never ask; use the settings file if there is one,"
@@ -446,7 +451,9 @@ show_list() {
 # pick_names NAME "Question" LIST: like ask, but turns down names that aren't
 # in LIST so a typo doesn't slip through. An empty LIST skips that check.
 pick_names() {
-  local name="$1" question="$2" list="$3" n bad
+  local name="$1" question="$2" list="$3" n bad prev
+  # A rejected answer must not become the next suggestion.
+  prev="${!name}"
   while true; do
     ask "$name" "$question"
     bad=""
@@ -458,6 +465,7 @@ pick_names() {
     fi
     [ -z "$bad" ] && return
     echo "${C_WARN}  Not in the list:$bad. Check the spelling against the list above.${C_OFF}"
+    printf -v "$name" '%s' "$prev"
   done
 }
 
@@ -475,6 +483,7 @@ show_banner() {
 |__/  |__/ \______/ |__/  |__/       \_____/\___/ |__/|________/
 BANNER
   printf '%s' "$C_OFF"
+  echo "${C_DIM}  version $SCRIPT_VERSION${C_OFF}"
 }
 
 # new_screen "question 1 of 8, Data folder" [COLOR]: clears the screen so each
@@ -696,6 +705,9 @@ run_questions() {
 if [ -t 0 ] && [ "$NO_QUESTIONS" != yes ]; then
   show_banner
   echo
+else
+  # The nightly log still records which version ran.
+  echo "n8n-setup-mac-linux.sh version $SCRIPT_VERSION, $(date '+%Y-%m-%d %H:%M')"
 fi
 
 if [ "$RECONFIGURE" = yes ] && [ ! -t 0 ]; then
@@ -852,12 +864,21 @@ wait_for_runners_image() {
 # and this script would replace it. Say so, ask first, and suggest that
 # container's data folder, port and public address so nothing gets lost.
 
+# Containers this script starts carry this label, so it can tell its own n8n
+# from one set up some other way.
+OUR_LABEL="n8n-docker-task-runners=managed"
+
+is_our_n8n() {
+  docker container inspect -f '{{json .Config.Labels}}' n8n 2>/dev/null | grep -qF '"n8n-docker-task-runners":"managed"'
+}
+
 adopt_existing_n8n() {
   docker container inspect n8n >/dev/null 2>&1 || return 0
   local info rest type src vol port envs url
   info="$(docker container inspect -f '{{range .Mounts}}{{if eq .Destination "/home/node/.n8n"}}{{.Type}}|{{.Source}}|{{if eq .Type "volume"}}{{.Name}}{{end}}{{end}}{{end}}' n8n 2>/dev/null)"
   type="${info%%|*}"; rest="${info#*|}"; src="${rest%%|*}"; vol="${rest#*|}"
-  port="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{if eq $p "5678/tcp"}}{{(index $b 0).HostPort}}{{end}}{{end}}' n8n 2>/dev/null)"
+  # "|| true": a binding with no entries makes the template fail; no port then.
+  port="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{if eq $p "5678/tcp"}}{{(index $b 0).HostPort}}{{end}}{{end}}' n8n 2>/dev/null || true)"
   envs="$(docker container inspect -f '{{range .Config.Env}}{{println .}}{{end}}' n8n 2>/dev/null)"
   url="$(printf '%s\n' "$envs" | sed -n 's/^N8N_WEBHOOK_URL=//p; s/^WEBHOOK_URL=//p' | head -1)"
 
@@ -908,6 +929,15 @@ if [ "$RECONFIGURE" = yes ]; then
 elif [ -f "$SETTINGS_FILE" ]; then
   echo "Using settings from $SETTINGS_FILE"
 elif [ "$NO_QUESTIONS" = yes ] || [ ! -t 0 ]; then
+  # Nobody is here to answer the question adopt_existing_n8n asks, so an n8n
+  # this script didn't create is left alone rather than replaced.
+  if docker container inspect n8n >/dev/null 2>&1 && ! is_our_n8n; then
+    echo "${C_ERR}There's an n8n on this computer that this script didn't set up, and${C_OFF}"
+    echo "${C_ERR}there's no settings file next to the script, so nothing was changed.${C_OFF}"
+    echo "Run the script once without --no-questions to decide what to do with it."
+    NOT_A_BUG=yes
+    exit 1
+  fi
   echo "No settings file next to the script; using the values written in it."
 else
   adopt_existing_n8n
@@ -1077,6 +1107,7 @@ fi
 echo "Starting n8n..."
 docker run -d \
   --name n8n \
+  --label "$OUR_LABEL" \
   --restart always \
   --network "$DOCKER_NETWORK" \
   -p "$N8N_HOST_PORT:5678" \
@@ -1103,6 +1134,7 @@ docker run -d \
 echo "Starting n8n-runners..."
 docker run -d \
   --name n8n-runners \
+  --label "$OUR_LABEL" \
   --restart always \
   --network "$DOCKER_NETWORK" \
   -e N8N_RUNNERS_AUTH_TOKEN="$N8N_RUNNERS_AUTH_TOKEN" \
