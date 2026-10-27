@@ -39,7 +39,7 @@
 #   removing and recreating the containers does not delete them. That is what
 #   makes it safe to run this every night to stay on the latest n8n.
 #
-#   This is the Windows version of n8n-docker-task-runners-setup.sh. The
+#   This is the Windows version of n8n-setup-mac-linux.sh. The
 #   containers and settings are the same. The differences are Windows only:
 #   the token comes from .NET instead of openssl, and the JSON file is written
 #   without a byte order mark, which Windows PowerShell 5.1 adds by default and
@@ -103,9 +103,9 @@
 #   Line 176  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
-#   powershell -ExecutionPolicy Bypass -File .\n8n-docker-task-runners-setup.ps1
+#   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
 #   The -ExecutionPolicy Bypass part applies to this one run only. If Windows
-#   still blocks a downloaded file, run: Unblock-File .\n8n-docker-task-runners-setup.ps1
+#   still blocks a downloaded file, run: Unblock-File .\n8n-setup-windows.ps1
 #
 # If n8n feels slow or logs "database is locked": the data folder is a Windows
 # folder shared into Docker's Linux VM, and SQLite can struggle there. Swap the
@@ -246,7 +246,7 @@ function Read-SettingsFile {
 
 function Save-SettingsFile {
     $lines = @(
-        "# Settings for n8n-docker-task-runners-setup.ps1, saved $(Get-Date -Format 'yyyy-MM-dd HH:mm').",
+        "# Settings for n8n-setup-windows.ps1, saved $(Get-Date -Format 'yyyy-MM-dd HH:mm').",
         '# Keep this file in the same folder as the script. Edit the values here,',
         '# or run the script with -Reconfigure to answer the questions again.'
     )
@@ -998,7 +998,7 @@ if ($script:AskedQuestions) {
         } else {
             $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoQuestions"
             $trigger = New-ScheduledTaskTrigger -Daily -At $S.NIGHTLY_TIME
-            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Description 'Keeps n8n up to date. Created by n8n-docker-task-runners-setup.ps1.' -Force -ErrorAction Stop | Out-Null
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Description 'Keeps n8n up to date. Created by n8n-setup-windows.ps1.' -Force -ErrorAction Stop | Out-Null
             Write-Host "n8n will update itself every night at $(Show-Time $S.NIGHTLY_TIME)." -ForegroundColor Green
             Write-Host "Each run is logged to $(Join-Path $PSScriptRoot 'n8n-nightly.log')"
         }

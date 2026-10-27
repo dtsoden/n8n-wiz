@@ -2,7 +2,39 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/dtsoden/n8n-docker-task-runners?style=social)](https://github.com/dtsoden/n8n-docker-task-runners)
 
-One script that installs, upgrades and restarts a self-hosted n8n community edition with external task runners, on macOS, Linux or Windows. Run it once to set things up. Run it again, by hand or on a schedule, to pull the latest n8n and restart cleanly. Your workflows and credentials stay put.
+One script that installs n8n on your computer and keeps it up to date, on macOS, Linux or Windows.
+
+## Start here
+
+Take a breath. This page is long, but you only need one file. Download the one for your computer and run it. It asks a few simple questions, and each one comes with a suggested answer, so if you're not sure, just press Enter. The script sets up everything else.
+
+On a Mac or Linux, open Terminal and paste this:
+
+```bash
+mkdir -p ~/n8n-setup && cd ~/n8n-setup
+curl -fsSLO https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-mac-linux.sh
+bash n8n-setup-mac-linux.sh
+```
+
+On Windows, open PowerShell and paste this:
+
+```powershell
+mkdir $HOME\n8n-setup -Force; cd $HOME\n8n-setup
+Invoke-WebRequest https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-windows.ps1 -OutFile n8n-setup-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
+```
+
+If you'd rather click than paste, download [n8n-setup-mac-linux.sh](https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-mac-linux.sh) or [n8n-setup-windows.ps1](https://raw.githubusercontent.com/dtsoden/n8n-docker-task-runners/main/n8n-setup-windows.ps1) (right-click and choose Save link as), put it in a folder of its own, and run it from there. The script saves your answers next to itself, which is why it gets its own folder.
+
+You'll need Docker Desktop. If it isn't installed, the script tells you where to get it, and if it isn't running, the script offers to start it.
+
+When the script finishes, open http://localhost:5678 in your browser, or swap 5678 for the port you picked if you changed it. The script prints the exact address at the end. That's it.
+
+Everything below this point is optional. It's here for when you're curious, want to change something, or something goes wrong.
+
+## About this script
+
+It installs and upgrades a self-hosted n8n community edition with external task runners. Run it once to set things up. Run it again, by hand or on a schedule, to pull the latest n8n and restart cleanly. Your workflows and credentials stay put.
 
 I wrote it because keeping a community edition current by hand got old: stop the containers, pull new images, remember every flag, start them again. I've run this script for over a year, most of that time automatically every night, and my instance stays current without me touching it. When n8n moved Code node execution to external task runners, the script grew to set those up too.
 
@@ -26,29 +58,6 @@ Inside that data folder there's also a `files` folder for the Read/Write Files f
 Docker Desktop on macOS or Windows, or Docker Engine on Linux. Podman isn't covered.
 
 If you're setting this up for a company, read Docker's licence terms first. Docker Desktop is free for personal use, education and small businesses, but larger companies need a paid subscription. Docker Engine on Linux doesn't have that restriction, and Podman is the usual alternative if Docker Desktop is off the table. That decision is your organisation's to make.
-
-## Quick start
-
-macOS or Linux:
-
-```bash
-git clone https://github.com/dtsoden/n8n-docker-task-runners.git
-cd n8n-docker-task-runners
-chmod +x n8n-docker-task-runners-setup.sh
-./n8n-docker-task-runners-setup.sh
-```
-
-Windows (PowerShell):
-
-```powershell
-git clone https://github.com/dtsoden/n8n-docker-task-runners.git
-cd n8n-docker-task-runners
-powershell -ExecutionPolicy Bypass -File .\n8n-docker-task-runners-setup.ps1
-```
-
-No git? Download the repo as a ZIP from the green Code button and unzip it. On Windows, if the script is blocked as a downloaded file, run `Unblock-File .\n8n-docker-task-runners-setup.ps1` once.
-
-Then open http://localhost:5678 (or the port you chose).
 
 ## What happens when you run it
 
@@ -123,13 +132,13 @@ The easy way is the last setup question. Say yes, give it a time such as `2am`, 
 If you edit the script instead of answering questions, schedule it yourself. On macOS or Linux, a cron entry like this runs it at 2 a.m. (edit with `crontab -e`, and use full paths). Cron's own `PATH` often can't find `docker`, so the line sets one:
 
 ```
-0 2 * * * PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin /path/to/n8n-docker-task-runners/n8n-docker-task-runners-setup.sh --no-questions >> /path/to/n8n-nightly.log 2>&1
+0 2 * * * PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin /bin/bash /path/to/n8n-setup/n8n-setup-mac-linux.sh --no-questions >> /path/to/n8n-setup/n8n-nightly.log 2>&1
 ```
 
 On Windows:
 
 ```
-schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\path\to\n8n-docker-task-runners\n8n-docker-task-runners-setup.ps1 -NoQuestions"
+schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\path\to\n8n-setup\n8n-setup-windows.ps1 -NoQuestions"
 ```
 
 `--no-questions` and `-NoQuestions` make sure a scheduled run never sits waiting for an answer. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.

@@ -99,8 +99,8 @@
 #   Line 162  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run
-#   chmod +x n8n-docker-task-runners-setup.sh
-#   ./n8n-docker-task-runners-setup.sh
+#   bash n8n-setup-mac-linux.sh
+#   (or make it executable once with chmod +x and run ./n8n-setup-mac-linux.sh)
 #
 # Linux only: n8n runs as user ID 1000 inside the container. If n8n logs show
 # "permission denied" on /home/node/.n8n, run this once and start again:
@@ -270,7 +270,7 @@ load_settings() {
 save_settings() {
   local key
   {
-    echo "# Settings for n8n-docker-task-runners-setup.sh, saved $(date '+%Y-%m-%d %H:%M')."
+    echo "# Settings for n8n-setup-mac-linux.sh, saved $(date '+%Y-%m-%d %H:%M')."
     echo "# Keep this file in the same folder as the script. Edit the values here,"
     echo "# or run the script with --reconfigure to answer the questions again."
     for key in $SETTING_NAMES; do
@@ -1039,7 +1039,7 @@ if [ "$ASKED_QUESTIONS" = yes ]; then
       fi
     else
       script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
-      cron_line="$((10#${NIGHTLY_TIME#*:})) $((10#${NIGHTLY_TIME%%:*})) * * * PATH='$PATH' '$script_path' --no-questions >> '$SCRIPT_DIR/n8n-nightly.log' 2>&1 $CRON_TAG"
+      cron_line="$((10#${NIGHTLY_TIME#*:})) $((10#${NIGHTLY_TIME%%:*})) * * * PATH='$PATH' /bin/bash '$script_path' --no-questions >> '$SCRIPT_DIR/n8n-nightly.log' 2>&1 $CRON_TAG"
       if { if [ -n "$other_lines" ]; then printf '%s\n' "$other_lines"; fi; echo "$cron_line"; } | crontab -; then
         echo "${C_OK}n8n will update itself every night at $(show_time "$NIGHTLY_TIME").${C_OFF}"
         echo "Each run is logged to $SCRIPT_DIR/n8n-nightly.log"
@@ -1054,7 +1054,7 @@ fi
 if [ -t 0 ]; then
   echo
   echo "Want to change an answer later? Run this script again like this:"
-  echo "  $0 --reconfigure"
+  echo "  bash \"$0\" --reconfigure"
   echo
   echo "${C_STAR}If this saved you some time, please give it a star on GitHub. Stars are${C_OFF}"
   echo "${C_STAR}how other n8n users find it. The Star button is at the top right of:${C_OFF}"
