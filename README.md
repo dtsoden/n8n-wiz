@@ -61,6 +61,21 @@ If you're setting this up for a company, read Docker's licence terms first. Dock
 
 ## What happens when you run it
 
+When it starts, you'll see this:
+
+```
+            /$$$$$$                                /$$
+           /$$__  $$                              |__/
+ /$$$$$$$ | $$  \ $$ /$$$$$$$        /$$  /$$  /$$ /$$ /$$$$$$$$
+| $$__  $$|  $$$$$$/| $$__  $$      | $$ | $$ | $$| $$|____ /$$/
+| $$  \ $$ >$$__  $$| $$  \ $$      | $$ | $$ | $$| $$   /$$$$/
+| $$  | $$| $$  \ $$| $$  | $$      | $$ | $$ | $$| $$  /$$__/
+| $$  | $$|  $$$$$$/| $$  | $$      |  $$$$$/$$$$/| $$ /$$$$$$$$
+|__/  |__/ \______/ |__/  |__/       \_____/\___/ |__/|________/
+```
+
+Then, step by step:
+
 1. It checks that Docker is installed. If it isn't, it gives you the Docker Desktop download link and stops.
 2. It checks that Docker is running. If it isn't, it asks whether to start it, starts it, and waits up to three minutes for it to come up.
 3. It starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
