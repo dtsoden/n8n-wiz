@@ -99,15 +99,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 154  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 160  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 163  N8N_HOST_PORT       port you open in the browser
-#   Line 169  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 172  DOCKER_NETWORK      only if you already use a different network name
-#   Line 177  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 190 to 193  JS_* and PY_*  modules the Code node may import
-#   Line 198  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 203  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 156  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 162  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 165  N8N_HOST_PORT       port you open in the browser
+#   Line 171  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 174  DOCKER_NETWORK      only if you already use a different network name
+#   Line 179  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 192 to 195  JS_* and PY_*  modules the Code node may import
+#   Line 200  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 205  NIGHTLY_TIME        time of the nightly update, or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
@@ -123,7 +123,8 @@
 param(
     [switch]$Reconfigure,
     [switch]$NoQuestions,
-    [switch]$Remove
+    [switch]$Remove,
+    [switch]$Update
 )
 
 # Typed at a PowerShell prompt, --remove (two dashes) or a plain "remove" is
@@ -133,12 +134,13 @@ param(
 foreach ($word in $args) {
     switch -Regex ($word) {
         '^(--?|/)?remove$'        { $Remove = [switch]$true }
+        '^(--?|/)?update$'        { $Update = [switch]$true }
         '^(--?|/)?reconfigure$'   { $Reconfigure = [switch]$true }
         '^(--?|/)?no-?questions$' { $NoQuestions = [switch]$true }
         '^(--?|/)?(h|help|\?)$'  { $ShowHelp = $true }
         default {
             Write-Host "I don't recognize this option: $word" -ForegroundColor Red
-            Write-Host 'The options are -Reconfigure, -NoQuestions and -Remove.'
+            Write-Host 'The options are -Reconfigure, -NoQuestions, -Remove and -Update.'
             exit 1
         }
     }
@@ -204,7 +206,7 @@ $S = [ordered]@{
 }
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-$ScriptVersion = '1.1.0'
+$ScriptVersion = '1.2.0'
 
 # ---- Nothing below this line needs editing ----------------------------------
 
@@ -214,6 +216,7 @@ if ($ShowHelp) {
     Write-Host '  -Reconfigure   ask the setup questions again and save new answers'
     Write-Host '  -NoQuestions   never ask; use the saved answers'
     Write-Host '  -Remove        uninstall n8n; asks before deleting your workflows'
+    Write-Host '  -Update        replace this script with the newest n8n wiz release'
     exit 0
 }
 
@@ -665,6 +668,65 @@ function Invoke-Questions {
 
 $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
 
+# ---- Updating n8n wiz itself -------------------------------------------------
+# Each run asks GitHub for the newest n8n wiz release and says when there's a
+# newer one. -Update installs it, but only when someone asks for it. The script
+# never replaces itself on its own, so new code from GitHub never runs on a
+# machine until a person decides it should.
+
+$GitHubRepo = 'dtsoden/n8n-wiz'
+
+# The newest n8n wiz release on GitHub, e.g. 1.2.0, or '' if it can't be reached.
+function Get-NewestScriptVersion {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $r = Invoke-RestMethod -UseBasicParsing -TimeoutSec 10 "https://api.github.com/repos/$GitHubRepo/releases/latest"
+        $v = ([string]$r.tag_name) -replace '^v', ''
+        if ($v -match '^\d+\.\d+\.\d+$') { return $v }
+    } catch { }
+    return ''
+}
+
+function Invoke-Update {
+    Write-Host 'Checking GitHub for the newest n8n wiz...'
+    $newest = Get-NewestScriptVersion
+    if (-not $newest) {
+        Write-Host "I couldn't reach GitHub to check for a newer n8n wiz. Try again later." -ForegroundColor Red
+        exit 1
+    }
+    if ([version]$ScriptVersion -ge [version]$newest) {
+        Write-Host "You already have the newest n8n wiz ($ScriptVersion)." -ForegroundColor Green
+        exit 0
+    }
+    Write-Host "Downloading n8n wiz $newest..."
+    $tmp = "$PSCommandPath.new"
+    # Check the download before using it: it must be a script PowerShell can
+    # read, and it must say it is the version the release says it is.
+    $ok = $false
+    try {
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -OutFile $tmp -Uri "https://github.com/$GitHubRepo/releases/download/v$newest/n8n-setup-windows.ps1"
+        $errors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($tmp, [ref]$null, [ref]$errors) | Out-Null
+        $text = Get-Content -LiteralPath $tmp -Raw
+        $ok = ($errors.Count -eq 0) -and ($text -match ("(?m)^\`$ScriptVersion = '" + [regex]::Escape($newest) + "'"))
+    } catch { $ok = $false }
+    if (-not $ok) {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        Write-Host "The download didn't come through right, so nothing was changed. Try again later." -ForegroundColor Red
+        exit 1
+    }
+    Copy-Item -LiteralPath $PSCommandPath -Destination "$PSCommandPath.previous" -Force
+    Move-Item -LiteralPath $tmp -Destination $PSCommandPath -Force
+    Write-Host "Updated n8n wiz from $ScriptVersion to $newest." -ForegroundColor Green
+    Write-Host 'Your settings are unchanged. The old version is saved as'
+    Write-Host "  $PSCommandPath.previous"
+    Write-Host "What's new: https://github.com/$GitHubRepo/releases/tag/v$newest"
+    Write-Host 'The nightly update uses the new version from tonight.'
+    exit 0
+}
+
+if ($Update) { Invoke-Update }
+
 # The title shows whenever someone is watching, but never in the nightly log.
 if ($interactive -and -not $NoQuestions) {
     Show-Banner
@@ -672,6 +734,18 @@ if ($interactive -and -not $NoQuestions) {
 } else {
     # The nightly log still records which version ran.
     Write-Host "n8n-setup-windows.ps1 version $ScriptVersion, $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+}
+
+# Say so when a newer n8n wiz is out. Quiet when GitHub can't be reached.
+$NewestScript = ''
+if (-not $Remove) {
+    $NewestScript = Get-NewestScriptVersion
+    if ($NewestScript -and [version]$ScriptVersion -lt [version]$NewestScript) {
+        Write-Host "n8n wiz $NewestScript is available (you have $ScriptVersion). Run this script with -Update to get it." -ForegroundColor Yellow
+        Write-Host "What's new: https://github.com/$GitHubRepo/releases/tag/v$NewestScript"
+    } else {
+        $NewestScript = ''
+    }
 }
 
 if ($Reconfigure -and -not $interactive) {
@@ -780,7 +854,7 @@ function Invoke-Remove {
         Unregister-ScheduledTask -TaskName 'n8n nightly update' -Confirm:$false
     }
     Write-Host 'Removing the saved answers and the nightly log...'
-    Remove-Item -LiteralPath $SettingsFile, (Join-Path $PSScriptRoot 'n8n-nightly.log') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $SettingsFile, (Join-Path $PSScriptRoot 'n8n-nightly.log'), "$PSCommandPath.previous" -Force -ErrorAction SilentlyContinue
 
     Write-Host ''
     if ($deleteData) {
@@ -1260,6 +1334,11 @@ if ($script:AskedQuestions) {
 # Only when someone is watching, so the nightly log stays quiet.
 if ($interactive -and -not $NoQuestions) {
     Write-Host ''
+    if ($NewestScript) {
+        Write-Host "n8n wiz $NewestScript is available. Get it with:" -ForegroundColor Yellow
+        Write-Host "  powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Update" -ForegroundColor Yellow
+        Write-Host ''
+    }
     Write-Host 'Want to change an answer later? Run this script again like this:'
     Write-Host "  powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Reconfigure"
     Write-Host ''

@@ -132,15 +132,15 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 123 | 154 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 129 | 160 | `latest` updates to the newest release in the major version you're on, and asks at the keyboard before a new major version. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 132 | 163 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 137 | 169 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 140 | 172 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 145 | 177 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 158-161 | 190-193 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 166 | 198 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 171 | 203 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_DATA_DIR` | 123 | 156 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 129 | 162 | `latest` updates to the newest release in the major version you're on, and asks at the keyboard before a new major version. A number such as `2.45.4` holds you on that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 132 | 165 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 137 | 171 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 140 | 174 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 145 | 179 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 158-161 | 192-195 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 166 | 200 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 171 | 205 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## Options
 
@@ -151,7 +151,8 @@ Add one of these after the script's name when you run it. On Windows, use the fo
 | `--reconfigure` (`-Reconfigure`) | Asks the setup questions again, with your current answers as the suggestions |
 | `--no-questions` (`-NoQuestions`) | Never asks anything. Uses the saved answers, or the values written in the script if there are none. Scheduled runs use this |
 | `--remove` (`-Remove`) | Uninstalls n8n. See "Removing it" below |
-| `--help` | Lists these options (Mac and Linux script only) |
+| `--update` (`-Update`) | Replaces the script with the newest n8n wiz release. See "Updating n8n wiz" below |
+| `--help` (`-Help`) | Lists these options and shows the script's version |
 
 For example: `bash n8n-setup-mac-linux.sh --reconfigure`, or on Windows `powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1 -Reconfigure`.
 
@@ -163,7 +164,7 @@ By default the scripts allow every Python module available in the runners image 
 
 Each run pulls the images first and only then replaces the containers, so a failed pull leaves your current n8n running. n8n is down for the few seconds it takes to restart, so pick a quiet hour. Executions running at that moment are interrupted.
 
-The easy way is the last setup question. Say yes, give it a time such as `2am`, and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, the first time the script edits your crontab, macOS may ask whether Terminal may administer your computer. Say yes.
+The easy way is the last setup question. Say yes, give it a time such as `2am`, and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, saving the nightly schedule (and turning it off or uninstalling) can make macOS ask whether Terminal may administer your computer. That's the schedule being saved, so click Allow. If you clicked Don't Allow, the script says it couldn't set up the nightly update; allow Terminal under System Settings > Privacy & Security and run `--reconfigure` again.
 
 If you edit the script instead of answering questions, schedule it yourself. On macOS or Linux, a cron entry like this runs it at 2 a.m. (edit with `crontab -e`, and use full paths). Cron's own `PATH` often can't find `docker`, so the line sets one:
 
@@ -178,6 +179,20 @@ schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -W
 ```
 
 `--no-questions` and `-NoQuestions` make sure a scheduled run never sits waiting for an answer. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.
+
+## Updating n8n wiz
+
+Every run checks GitHub for a newer n8n wiz. When there is one, it says so on screen, or in the nightly log when nobody is watching:
+
+```
+n8n wiz 1.3.0 is available (you have 1.2.0). Run this script with --update to get it.
+```
+
+To update, run the script with `--update` (or `-Update` on Windows). It downloads the newest release's file and checks that it's a complete script of the right version. It saves your current file next to it as `.previous`, then swaps in the new one. Your settings file isn't touched, so there's nothing to set up again, and the nightly update uses the new version from that night on.
+
+The script never updates itself on its own. A new release only runs on your computer after you ask for it, which keeps that decision with you. You can also have GitHub email you about new releases: on the repo page, click Watch, then Custom, then Releases.
+
+Scripts older than 1.2.0 don't have `--update`. Replace those by hand with the file from the [latest release](https://github.com/dtsoden/n8n-wiz/releases/latest), and keep your settings file next to it.
 
 ## Removing it
 

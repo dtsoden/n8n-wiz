@@ -173,7 +173,7 @@ NIGHTLY_TIME="02:00"
 # ---- Nothing below this line needs editing ----------------------------------
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
 # Stop at the first command that fails.
 set -e
@@ -214,20 +214,23 @@ SETTING_NAMES="N8N_DATA_DIR N8N_VERSION N8N_HOST_PORT N8N_WEBHOOK_URL DOCKER_NET
 RECONFIGURE=no
 NO_QUESTIONS=no
 REMOVE=no
+UPDATE=no
 for arg in "$@"; do
   case "$arg" in
     # The usual spellings all work, so -remove or plain "remove" don't fail.
     --reconfigure|-reconfigure|reconfigure)  RECONFIGURE=yes ;;
     --no-questions|-no-questions|no-questions|--noquestions|-noquestions) NO_QUESTIONS=yes ;;
     --remove|-remove|remove)  REMOVE=yes ;;
+    --update|-update|update)  UPDATE=yes ;;
     -h|--help|help)
       echo "n8n-setup-mac-linux.sh version $SCRIPT_VERSION"
-      echo "Usage: $0 [--reconfigure | --no-questions | --remove]"
+      echo "Usage: $0 [--reconfigure | --no-questions | --remove | --update]"
       echo "  --reconfigure   ask the setup questions again and save new answers"
       echo "  --no-questions  never ask; use the settings file if there is one,"
       echo "                  otherwise the values written in this script"
       echo "  --remove        uninstall n8n, its images, the nightly update and the"
       echo "                  saved answers; asks before deleting your workflows"
+      echo "  --update        replace this script with the newest n8n wiz release"
       echo "Settings file: $SETTINGS_FILE"
       exit 0 ;;
     *) echo "${C_ERR}Unknown option: $arg (try --help)${C_OFF}"; exit 1 ;;
@@ -698,6 +701,71 @@ run_questions() {
   save_settings
 }
 
+# ---- Updating n8n wiz itself -------------------------------------------------
+# Each run asks GitHub for the newest n8n wiz release and says when there's a
+# newer one. --update installs it, but only when someone asks for it. The
+# script never replaces itself on its own, so new code from GitHub never runs
+# on a machine until a person decides it should.
+
+GITHUB_REPO="dtsoden/n8n-wiz"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+
+version_lt() {  # version_lt A B: true when release A is older than release B
+  local IFS=. i
+  local -a a b
+  a=($1); b=($2)
+  for i in 0 1 2; do
+    [ "${a[i]}" -lt "${b[i]}" ] && return 0
+    [ "${a[i]}" -gt "${b[i]}" ] && return 1
+  done
+  return 1
+}
+
+newest_script_version() {  # the newest n8n wiz release on GitHub, e.g. 1.2.0, or nothing
+  curl -fsS --max-time 10 "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null \
+    | grep -o '"tag_name": *"v[0-9]*\.[0-9]*\.[0-9]*"' | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1 || true
+}
+
+run_update() {
+  local newest tmp
+  echo "Checking GitHub for the newest n8n wiz..."
+  newest="$(newest_script_version)"
+  if ! [[ "$newest" =~ $RE_VERSION ]]; then
+    echo "${C_ERR}I couldn't reach GitHub to check for a newer n8n wiz. Try again later.${C_OFF}"
+    NOT_A_BUG=yes
+    exit 1
+  fi
+  if ! version_lt "$SCRIPT_VERSION" "$newest"; then
+    echo "${C_OK}You already have the newest n8n wiz ($SCRIPT_VERSION).${C_OFF}"
+    exit 0
+  fi
+  echo "Downloading n8n wiz $newest..."
+  tmp="$SCRIPT_PATH.new"
+  # Check the download before using it: it must be a script bash can read, and
+  # it must say it is the version the release says it is.
+  if ! curl -fsSL --max-time 60 -o "$tmp" \
+         "https://github.com/$GITHUB_REPO/releases/download/v$newest/n8n-setup-mac-linux.sh" \
+     || ! bash -n "$tmp" 2>/dev/null \
+     || ! grep -q "^SCRIPT_VERSION=\"$newest\"$" "$tmp"; then
+    rm -f "$tmp"
+    echo "${C_ERR}The download didn't come through right, so nothing was changed. Try again later.${C_OFF}"
+    NOT_A_BUG=yes
+    exit 1
+  fi
+  cp -p "$SCRIPT_PATH" "$SCRIPT_PATH.previous"
+  if [ -x "$SCRIPT_PATH" ]; then chmod +x "$tmp"; fi
+  # mv swaps in a new file rather than writing over this one while it runs.
+  mv "$tmp" "$SCRIPT_PATH"
+  echo "${C_OK}Updated n8n wiz from $SCRIPT_VERSION to $newest.${C_OFF}"
+  echo "Your settings are unchanged. The old version is saved as"
+  echo "  $SCRIPT_PATH.previous"
+  echo "What's new: https://github.com/$GITHUB_REPO/releases/tag/v$newest"
+  echo "The nightly update uses the new version from tonight."
+  exit 0
+}
+
+if [ "$UPDATE" = yes ]; then run_update; fi
+
 # ---- Docker -----------------------------------------------------------------
 # Everything after the questions needs Docker, so make sure it is installed and
 # running before asking anything. [ -t 0 ] is true when someone is at the
@@ -711,6 +779,18 @@ if [ -t 0 ] && [ "$NO_QUESTIONS" != yes ]; then
 else
   # The nightly log still records which version ran.
   echo "n8n-setup-mac-linux.sh version $SCRIPT_VERSION, $(date '+%Y-%m-%d %H:%M')"
+fi
+
+# Say so when a newer n8n wiz is out. Quiet when GitHub can't be reached.
+NEWEST_SCRIPT=""
+if [ "$REMOVE" != yes ]; then
+  NEWEST_SCRIPT="$(newest_script_version)"
+  if [[ "$NEWEST_SCRIPT" =~ $RE_VERSION ]] && version_lt "$SCRIPT_VERSION" "$NEWEST_SCRIPT"; then
+    echo "${C_WARN}n8n wiz $NEWEST_SCRIPT is available (you have $SCRIPT_VERSION). Run this script with --update to get it.${C_OFF}"
+    echo "What's new: https://github.com/$GITHUB_REPO/releases/tag/v$NEWEST_SCRIPT"
+  else
+    NEWEST_SCRIPT=""
+  fi
 fi
 
 if [ "$RECONFIGURE" = yes ] && [ ! -t 0 ]; then
@@ -825,7 +905,7 @@ run_remove() {
     crontab -l 2>/dev/null | grep -vF "$CRON_TAG" | crontab - || true
   fi
   echo "Removing the saved answers and the nightly log..."
-  rm -f "$SETTINGS_FILE" "$SCRIPT_DIR/n8n-nightly.log"
+  rm -f "$SETTINGS_FILE" "$SCRIPT_DIR/n8n-nightly.log" "$SCRIPT_PATH.previous"
 
   echo
   if [ "$delete_data" = yes ]; then
@@ -875,17 +955,6 @@ newest_in_major() {  # newest_in_major 2: the newest stable 2.x.y release on Doc
     echo "$tag"
     return 0
   done
-}
-
-version_lt() {  # version_lt A B: true when release A is older than release B
-  local IFS=. i
-  local -a a b
-  a=($1); b=($2)
-  for i in 0 1 2; do
-    [ "${a[i]}" -lt "${b[i]}" ] && return 0
-    [ "${a[i]}" -gt "${b[i]}" ] && return 1
-  done
-  return 1
 }
 
 ask_major_upgrade() {  # ask_major_upgrade CURRENT NEWEST
@@ -1289,6 +1358,10 @@ fi
 # Only when someone is watching, so the nightly log stays quiet.
 if [ -t 0 ]; then
   echo
+  if [ -n "$NEWEST_SCRIPT" ]; then
+    echo "${C_WARN}n8n wiz $NEWEST_SCRIPT is available. Get it with: bash \"$0\" --update${C_OFF}"
+    echo
+  fi
   echo "Want to change an answer later? Run this script again like this:"
   echo "  bash \"$0\" --reconfigure"
   echo
