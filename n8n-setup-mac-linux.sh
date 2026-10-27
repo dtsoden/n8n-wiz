@@ -847,15 +847,70 @@ wait_for_runners_image() {
   fi
 }
 
+# ---- An n8n that was set up some other way ---------------------------------
+# On a first run, an existing "n8n" container was set up by something else,
+# and this script would replace it. Say so, ask first, and suggest that
+# container's data folder, port and public address so nothing gets lost.
+
+adopt_existing_n8n() {
+  docker container inspect n8n >/dev/null 2>&1 || return 0
+  local info rest type src vol port envs url
+  info="$(docker container inspect -f '{{range .Mounts}}{{if eq .Destination "/home/node/.n8n"}}{{.Type}}|{{.Source}}|{{if eq .Type "volume"}}{{.Name}}{{end}}{{end}}{{end}}' n8n 2>/dev/null)"
+  type="${info%%|*}"; rest="${info#*|}"; src="${rest%%|*}"; vol="${rest#*|}"
+  port="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{if eq $p "5678/tcp"}}{{(index $b 0).HostPort}}{{end}}{{end}}' n8n 2>/dev/null)"
+  envs="$(docker container inspect -f '{{range .Config.Env}}{{println .}}{{end}}' n8n 2>/dev/null)"
+  url="$(printf '%s\n' "$envs" | sed -n 's/^N8N_WEBHOOK_URL=//p; s/^WEBHOOK_URL=//p' | head -1)"
+
+  clear 2>/dev/null || printf '\033[2J\033[H'
+  show_banner
+  echo
+  echo "${C_WARN}There's already an n8n on this computer, in a container called n8n.${C_OFF}"
+  echo "If you go ahead, this script replaces that container with its own setup."
+  echo
+  if [ "$type" = bind ] && [ -n "$src" ]; then
+    echo "Its workflows and credentials are in $src."
+    echo "I'll suggest that folder as the data folder, so they carry over."
+    N8N_DATA_DIR="$src"
+  elif [ "$type" = volume ]; then
+    echo "${C_WARN}Its workflows and credentials are in a Docker volume called $vol,${C_OFF}"
+    echo "${C_WARN}not in a folder. This script uses a folder, so the new n8n would${C_OFF}"
+    echo "${C_WARN}start empty. The volume itself isn't deleted.${C_OFF}"
+  else
+    echo "${C_WARN}I couldn't tell where its workflows and credentials are kept.${C_OFF}"
+  fi
+  if [ -n "$port" ] && valid N8N_HOST_PORT "$port"; then
+    echo "It uses port $port, so I'll suggest that too."
+    N8N_HOST_PORT="$port"
+  fi
+  if [ -n "$url" ] && valid N8N_WEBHOOK_URL "$url"; then
+    echo "Its public address is $url, so I'll suggest that as well."
+    N8N_WEBHOOK_URL="$url"
+  fi
+  if printf '%s\n' "$envs" | grep -q '^N8N_ENCRYPTION_KEY='; then
+    echo
+    echo "${C_ERR}It also sets its encryption key directly, and this script doesn't. Without${C_OFF}"
+    echo "${C_ERR}that key the new n8n can't read your saved credentials. Only go ahead if${C_OFF}"
+    echo "${C_ERR}you know the same key is saved in the data folder's config file.${C_OFF}"
+  fi
+  echo
+  echo "Any other settings you gave the old container aren't carried over."
+  if ! ask_yes_no "Do you want to replace it?" n; then
+    echo "OK, nothing was changed."
+    exit 0
+  fi
+}
+
 # ---- Work out the settings --------------------------------------------------
 
 if [ "$RECONFIGURE" = yes ]; then
+  if [ ! -f "$SETTINGS_FILE" ]; then adopt_existing_n8n; fi
   run_questions
 elif [ -f "$SETTINGS_FILE" ]; then
   echo "Using settings from $SETTINGS_FILE"
 elif [ "$NO_QUESTIONS" = yes ] || [ ! -t 0 ]; then
   echo "No settings file next to the script; using the values written in it."
 else
+  adopt_existing_n8n
   run_questions
 fi
 
@@ -886,8 +941,8 @@ docker pull "n8nio/runners:$N8N_VERSION"
 # "|| true" keeps going when the containers don't exist yet (first run).
 
 echo "Stopping and removing old containers..."
-docker stop n8n n8n-runners 2>/dev/null || true
-docker rm -f n8n n8n-runners 2>/dev/null || true
+docker stop n8n n8n-runners >/dev/null 2>&1 || true
+docker rm -f n8n n8n-runners >/dev/null 2>&1 || true
 
 # ---- Network and data folder ------------------------------------------------
 

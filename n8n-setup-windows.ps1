@@ -799,15 +799,78 @@ function Wait-RunnersImage {
     }
 }
 
+# ---- An n8n that was set up some other way ---------------------------------
+# On a first run, an existing "n8n" container was set up by something else,
+# and this script would replace it. Say so, ask first, and suggest that
+# container's data folder, port and public address so nothing gets lost.
+# docker inspect's JSON is read instead of a --format template, because
+# Windows PowerShell 5.1 mangles the double quotes a template needs.
+
+function Use-ExistingN8n {
+    & docker container inspect n8n *> $null
+    if ($LASTEXITCODE -ne 0) { return }
+    $c = @((& docker container inspect n8n) | Out-String | ConvertFrom-Json)[0]
+    $mount = $c.Mounts | Where-Object { $_.Destination -eq '/home/node/.n8n' } | Select-Object -First 1
+    $port = ''
+    if ($c.HostConfig.PortBindings -and $c.HostConfig.PortBindings.'5678/tcp') {
+        $port = [string]$c.HostConfig.PortBindings.'5678/tcp'[0].HostPort
+    }
+    $envs = @($c.Config.Env)
+    $url = ''
+    foreach ($e in $envs) {
+        if ($e -match '^(N8N_)?WEBHOOK_URL=(.+)$') { $url = $Matches[2]; break }
+    }
+
+    try { Clear-Host } catch { Write-Host '' }
+    Show-Banner
+    Write-Host ''
+    Write-Host "There's already an n8n on this computer, in a container called n8n." -ForegroundColor Yellow
+    Write-Host 'If you go ahead, this script replaces that container with its own setup.'
+    Write-Host ''
+    if ($mount -and $mount.Type -eq 'bind' -and $mount.Source) {
+        Write-Host "Its workflows and credentials are in $($mount.Source)."
+        Write-Host "I'll suggest that folder as the data folder, so they carry over."
+        $S.N8N_DATA_DIR = $mount.Source
+    } elseif ($mount -and $mount.Type -eq 'volume') {
+        Write-Host "Its workflows and credentials are in a Docker volume called $($mount.Name)," -ForegroundColor Yellow
+        Write-Host 'not in a folder. This script uses a folder, so the new n8n would' -ForegroundColor Yellow
+        Write-Host "start empty. The volume itself isn't deleted." -ForegroundColor Yellow
+    } else {
+        Write-Host "I couldn't tell where its workflows and credentials are kept." -ForegroundColor Yellow
+    }
+    if ($port -and (Test-Setting 'N8N_HOST_PORT' $port)) {
+        Write-Host "It uses port $port, so I'll suggest that too."
+        $S.N8N_HOST_PORT = $port
+    }
+    if ($url -and (Test-Setting 'N8N_WEBHOOK_URL' $url)) {
+        Write-Host "Its public address is $url, so I'll suggest that as well."
+        $S.N8N_WEBHOOK_URL = $url
+    }
+    if ($envs | Where-Object { $_ -like 'N8N_ENCRYPTION_KEY=*' }) {
+        Write-Host ''
+        Write-Host "It also sets its encryption key directly, and this script doesn't. Without" -ForegroundColor Red
+        Write-Host "that key the new n8n can't read your saved credentials. Only go ahead if" -ForegroundColor Red
+        Write-Host "you know the same key is saved in the data folder's config file." -ForegroundColor Red
+    }
+    Write-Host ''
+    Write-Host "Any other settings you gave the old container aren't carried over."
+    if (-not (Ask-YesNo 'Do you want to replace it?' 'n')) {
+        Write-Host 'OK, nothing was changed.'
+        exit 0
+    }
+}
+
 # ---- Work out the settings --------------------------------------------------
 
 if ($Reconfigure) {
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { Use-ExistingN8n }
     Invoke-Questions
 } elseif (Test-Path -LiteralPath $SettingsFile) {
     Write-Host "Using settings from $SettingsFile"
 } elseif ($NoQuestions -or -not $interactive) {
     Write-Host 'No settings file next to the script; using the values written in it.'
 } else {
+    Use-ExistingN8n
     Invoke-Questions
 }
 

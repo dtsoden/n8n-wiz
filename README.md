@@ -194,6 +194,7 @@ Then add a Code node, set the language to Python, and run something with `import
 
 ## Things worth knowing
 
+- If your computer already runs n8n in a container called `n8n`, set up some other way, the first run says so and asks before replacing it. It suggests that container's data folder, port and public address so your workflows carry over, and warns if the old one sets its encryption key directly. Other settings you gave the old container aren't carried over.
 - The `n8nio/runners` version has to match `n8nio/n8n`. The scripts use one version setting for both images, so they always move together.
 - Each run writes `task-runners.json` into your data folder and mounts it over the runners image's default config, which it replaces entirely. It's a copy of the 2.45.4 default with your allowlists filled in. When n8n changes its default in a later release, this copy doesn't follow, so compare it now and then with the default for the version you run. Copy from the release tag, not the `master` branch, which can be ahead of the released image.
 - By default the broker listens only on localhost. The scripts set `N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0`, because a separate container can't reach localhost.
