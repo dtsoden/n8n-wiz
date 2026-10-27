@@ -65,6 +65,8 @@ If anything goes wrong along the way, the script stops and ends with a link to r
 
 Run the script. The first time, it asks eight questions, each on its own screen with a suggested answer. If you're not sure, press Enter to take the suggestion. For yes or no questions, `y` and `n` are enough.
 
+Each screen's header names its topic, and colors help you keep your place: the JavaScript libraries screen is yellow and the Python one magenta, errors are red, and good news is green. Set `NO_COLOR=1` before running the bash script if you'd rather have plain text.
+
 | Question | Suggested answer |
 |---|---|
 | Where should n8n keep its data? | `~/n8n`, or `C:\Users\<you>\n8n` on Windows |

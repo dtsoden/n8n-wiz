@@ -187,8 +187,8 @@ if ($NoQuestions) {
 # Stops the script with an error and points to the place to report a bug.
 function Stop-Script {
     Write-Host ''
-    Write-Host 'If this looks like a bug, please report it at'
-    Write-Host 'https://github.com/dtsoden/n8n-docker-task-runners/issues/new'
+    Write-Host 'If this looks like a bug, please report it at' -ForegroundColor Yellow
+    Write-Host 'https://github.com/dtsoden/n8n-docker-task-runners/issues/new' -ForegroundColor Yellow
     exit 1
 }
 
@@ -249,7 +249,7 @@ function Save-SettingsFile {
     )
     foreach ($key in $S.Keys) { $lines += "$key=$($S[$key])" }
     [System.IO.File]::WriteAllLines($SettingsFile, [string[]]$lines, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host "Saved your answers to $SettingsFile"
+    Write-Host "Saved your answers to $SettingsFile" -ForegroundColor Green
 }
 
 # ---- Questions --------------------------------------------------------------
@@ -264,7 +264,7 @@ function Ask([string]$Name, [string]$Question) {
         "  Press Enter for $($S[$Name]), or type something else"
     }
     Write-Host ''
-    Write-Host $Question
+    Write-Host $Question -ForegroundColor White
     while ($true) {
         $answer = Read-Host $hint
         if ($answer -eq '') { $answer = $S[$Name] }
@@ -284,7 +284,7 @@ function Ask([string]$Name, [string]$Question) {
 function Ask-YesNo([string]$Question, [string]$Default) {
     $hint = if ($Default -eq 'y') { '  Press Enter for yes, or type n for no' } else { '  Press Enter for no, or type y for yes' }
     Write-Host ''
-    Write-Host $Question
+    Write-Host $Question -ForegroundColor White
     while ($true) {
         $answer = Read-Host $hint
         if ($answer -eq '') { $answer = $Default }
@@ -334,9 +334,9 @@ function Show-Seconds([int]$Seconds) {
 }
 
 # Prints numbered options and returns the number picked. Enter picks $Default.
-function Select-Option([string]$Question, [int]$Default, [string[]]$Options) {
+function Select-Option([string]$Question, [int]$Default, [string[]]$Options, [string]$Color = 'White') {
     Write-Host ''
-    Write-Host $Question
+    Write-Host $Question -ForegroundColor $Color
     for ($i = 0; $i -lt $Options.Count; $i++) { Write-Host "  $($i + 1)  $($Options[$i])" }
     while ($true) {
         $answer = Read-Host "  Press Enter for $Default, or type a number"
@@ -354,7 +354,7 @@ function Get-ImageList([string]$Kind) {
     $image = "n8nio/runners:$($S.N8N_VERSION)"
     & docker image inspect $image *> $null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host '  Downloading the n8n runners image to read the list. This can take a minute...'
+        Write-Host '  Downloading the n8n runners image to read the list. This can take a minute...' -ForegroundColor Yellow
         & docker pull -q $image *> $null
         if ($LASTEXITCODE -ne 0) { return '' }
     }
@@ -379,7 +379,7 @@ function Get-ImageList([string]$Kind) {
 # supply the list.
 function Show-List([string]$List, [string]$Where) {
     if ($List -eq '') {
-        Write-Host "  I couldn't read the list from Docker. The names are at $Where"
+        Write-Host "  I couldn't read the list from Docker. The names are at $Where" -ForegroundColor Yellow
         return
     }
     Write-Host '  These come installed:'
@@ -406,25 +406,25 @@ function Read-Names([string]$Name, [string]$Question, [string]$List) {
 
 # Clears the screen so each question stands on its own instead of scrolling
 # under the ones before it.
-function Show-NewScreen([string]$Title) {
+function Show-NewScreen([string]$Title, [string]$Color = 'Cyan') {
     try { Clear-Host } catch { Write-Host "" }
-    Write-Host "Setting up n8n: $Title"
-    Write-Host "If you're not sure, press Enter to take the suggested answer."
-    Write-Host 'Made a mistake? You can change any answer on the summary screen at the end.'
+    Write-Host "Setting up n8n: $Title" -ForegroundColor $Color
+    Write-Host "If you're not sure, press Enter to take the suggested answer." -ForegroundColor DarkGray
+    Write-Host 'Made a mistake? You can change any answer on the summary screen at the end.' -ForegroundColor DarkGray
 }
 
 function Invoke-Question1 {
-    Show-NewScreen 'question 1 of 8'
+    Show-NewScreen 'question 1 of 8, Data folder'
     Ask 'N8N_DATA_DIR' 'Where should n8n keep its workflows, credentials and other data?'
 }
 
 function Invoke-Question2 {
-    Show-NewScreen 'question 2 of 8'
+    Show-NewScreen 'question 2 of 8, Port'
     Ask 'N8N_HOST_PORT' "Which port number should n8n use? If you don't know what that means, just press Enter."
 }
 
 function Invoke-Question3 {
-    Show-NewScreen 'question 3 of 8'
+    Show-NewScreen 'question 3 of 8, Internet address'
     $hasUrl = if ($S.N8N_WEBHOOK_URL -ne '') { 'y' } else { 'n' }
     if (Ask-YesNo "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." $hasUrl) {
         while ($true) {
@@ -438,16 +438,16 @@ function Invoke-Question3 {
 }
 
 function Invoke-Question4 {
-    Show-NewScreen 'question 4 of 8'
+    Show-NewScreen 'question 4 of 8, Code node time limit'
     Ask 'TASK_TIMEOUT' "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(Show-Seconds $S.TASK_TIMEOUT). For 10 minutes, type 600."
 }
 
 function Invoke-Question5 {
-    Show-NewScreen 'question 5 of 8'
+    Show-NewScreen 'question 5 of 8, JavaScript libraries' 'Yellow'
     Write-Host ''
-    Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on'
-    Write-Host 'the machine it runs on. If you want to read up before deciding, see'
-    Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners'
+    Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on' -ForegroundColor DarkGray
+    Write-Host 'the machine it runs on. If you want to read up before deciding, see' -ForegroundColor DarkGray
+    Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners' -ForegroundColor DarkGray
 
     $jsNow = ''
     $jsDefault = if ($S.JS_BUILTIN_ALLOW -eq '*' -and $S.JS_EXTERNAL_ALLOW -eq '*') { 1 }
@@ -458,19 +458,19 @@ function Invoke-Question5 {
         'Everything that comes installed',
         'Just crypto and moment',
         'None',
-        "Let me pick from the full list$jsNow")
+        "Let me pick from the full list$jsNow") 'Yellow'
     switch ($choice) {
         1 { $S.JS_BUILTIN_ALLOW = '*'; $S.JS_EXTERNAL_ALLOW = '*' }
         2 { $S.JS_BUILTIN_ALLOW = 'crypto'; $S.JS_EXTERNAL_ALLOW = 'moment' }
         3 { $S.JS_BUILTIN_ALLOW = ''; $S.JS_EXTERNAL_ALLOW = '' }
         4 {
             Write-Host ''
-            Write-Host 'First, Node.js built-in libraries.'
+            Write-Host 'First, Node.js built-in libraries.' -ForegroundColor White
             $list = Get-ImageList 'js-builtin'
             Show-List $list 'https://nodejs.org/api/'
             Read-Names 'JS_BUILTIN_ALLOW' 'Type the ones to allow, separated by commas:' $list
             Write-Host ''
-            Write-Host 'Now npm packages.'
+            Write-Host 'Now npm packages.' -ForegroundColor White
             $list = Get-ImageList 'js-npm'
             Show-List $list 'https://github.com/n8n-io/n8n/tree/master/docker/images/runners'
             Read-Names 'JS_EXTERNAL_ALLOW' 'Type the ones to allow, separated by commas:' $list
@@ -482,11 +482,11 @@ function Invoke-Question5 {
 # Python's extra packages in the image are only the runner's own plumbing,
 # so they follow the standard library answer instead of getting a question.
 function Invoke-Question6 {
-    Show-NewScreen 'question 6 of 8'
+    Show-NewScreen 'question 6 of 8, Python libraries' 'Magenta'
     Write-Host ''
-    Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on'
-    Write-Host 'the machine it runs on. If you want to read up before deciding, see'
-    Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners'
+    Write-Host 'Allowing everything is easiest, but it also lets a Code node do more on' -ForegroundColor DarkGray
+    Write-Host 'the machine it runs on. If you want to read up before deciding, see' -ForegroundColor DarkGray
+    Write-Host 'https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners' -ForegroundColor DarkGray
     $pyCommon = 'json,datetime,math,re,random,statistics'
     $pyNow = ''
     $pyDefault = if ($S.PY_STDLIB_ALLOW -eq '*') { 1 }
@@ -497,7 +497,7 @@ function Invoke-Question6 {
         "Everything in Python's standard library",
         'Just json, datetime, math, re, random and statistics',
         'None',
-        "Let me pick from the full list$pyNow")
+        "Let me pick from the full list$pyNow") 'Magenta'
     switch ($choice) {
         1 { $S.PY_STDLIB_ALLOW = '*'; $S.PY_EXTERNAL_ALLOW = '*' }
         2 { $S.PY_STDLIB_ALLOW = $pyCommon; $S.PY_EXTERNAL_ALLOW = '' }
@@ -513,7 +513,7 @@ function Invoke-Question6 {
 }
 
 function Invoke-Question7 {
-    Show-NewScreen 'question 7 of 8'
+    Show-NewScreen 'question 7 of 8, Execute Command and Local File Trigger'
     Write-Host ''
     Write-Host 'n8n 2.0 and later switch off two nodes that can run commands and read'
     Write-Host 'files on this computer: Execute Command and Local File Trigger.'
@@ -522,13 +522,13 @@ function Invoke-Question7 {
 }
 
 function Invoke-Question8 {
-    Show-NewScreen 'question 8 of 8'
+    Show-NewScreen 'question 8 of 8, Nightly update'
     $nightlyDefault = if ($S.NIGHTLY_TIME -eq 'off') { 'n' } else { 'y' }
     if (Ask-YesNo 'Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on and you need to be signed in at that time.' $nightlyDefault) {
         if ($S.NIGHTLY_TIME -eq 'off') { $S.NIGHTLY_TIME = '02:00' }
         Write-Host ''
-        Write-Host 'What time should it run? n8n is down for a few seconds while it updates,'
-        Write-Host 'so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00.'
+        Write-Host 'What time should it run? n8n is down for a few seconds while it updates,' -ForegroundColor White
+        Write-Host 'so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00.' -ForegroundColor White
         while ($true) {
             $answer = Read-Host "  Press Enter for $(Show-Time $S.NIGHTLY_TIME), or type a time"
             if ($answer -eq '') { $answer = $S.NIGHTLY_TIME }
@@ -548,15 +548,15 @@ function Invoke-Questions {
     $note = ''
     while ($true) {
         try { Clear-Host } catch { Write-Host '' }
-        Write-Host 'Setting up n8n: check your answers'
+        Write-Host 'Setting up n8n: check your answers' -ForegroundColor Cyan
         Write-Host ''
         Write-Host "  1  Data folder:                    $($S.N8N_DATA_DIR)"
         Write-Host "  2  Port:                           $($S.N8N_HOST_PORT)"
         Write-Host "  3  Internet address:               $(if ($S.N8N_WEBHOOK_URL) { $S.N8N_WEBHOOK_URL } else { 'none, this computer only' })"
         Write-Host "  4  Code node time limit:           $(Show-Seconds $S.TASK_TIMEOUT)"
-        Write-Host "  5  JavaScript built-in libraries:  $(Show-Value $S.JS_BUILTIN_ALLOW)"
-        Write-Host "     JavaScript npm packages:        $(Show-Value $S.JS_EXTERNAL_ALLOW)"
-        Write-Host "  6  Python libraries:               $(Show-Value $S.PY_STDLIB_ALLOW)"
+        Write-Host "  5  JavaScript built-in libraries:  $(Show-Value $S.JS_BUILTIN_ALLOW)" -ForegroundColor Yellow
+        Write-Host "     JavaScript npm packages:        $(Show-Value $S.JS_EXTERNAL_ALLOW)" -ForegroundColor Yellow
+        Write-Host "  6  Python libraries:               $(Show-Value $S.PY_STDLIB_ALLOW)" -ForegroundColor Magenta
         Write-Host "  7  Execute Command and Local File: $($S.ENABLE_EXEC_NODES)"
         if ($S.NIGHTLY_TIME -eq 'off') {
             Write-Host '  8  Nightly update:                 off'
@@ -564,8 +564,8 @@ function Invoke-Questions {
             Write-Host "  8  Nightly update:                 every night at $(Show-Time $S.NIGHTLY_TIME)"
         }
         Write-Host ''
-        Write-Host 'You can also change any of this later by running the script with -Reconfigure.'
-        Write-Host 'To quit without saving anything, press Ctrl+C.'
+        Write-Host 'You can also change any of this later by running the script with -Reconfigure.' -ForegroundColor DarkGray
+        Write-Host 'To quit without saving anything, press Ctrl+C.' -ForegroundColor DarkGray
         if ($note) { Write-Host ''; Write-Host "  $note" -ForegroundColor Yellow; $note = '' }
         Write-Host ''
         $answer = Read-Host '  Press Enter to save and start n8n, or type a number to change that answer'
@@ -609,7 +609,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 if (-not (Test-DockerRunning)) {
     $dockerDesktop = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
     if ($NoQuestions -or -not $interactive) {
-        Write-Host "Docker isn't running. Trying to start it..."
+        Write-Host "Docker isn't running. Trying to start it..." -ForegroundColor Yellow
     } elseif (-not (Ask-YesNo "Docker is installed but isn't running. Do you want me to start it?" 'y')) {
         Write-Host 'OK. Start Docker Desktop yourself, then run this script again.'
         Stop-Script
@@ -626,13 +626,13 @@ if (-not (Test-DockerRunning)) {
         if ($tries -gt 60) {
             Write-Host ''
             Write-Host "Docker still isn't running after 3 minutes. Open Docker Desktop yourself," -ForegroundColor Red
-            Write-Host "wait until it says it's running, then run this script again."
+            Write-Host "wait until it says it's running, then run this script again." -ForegroundColor Red
             Stop-Script
         }
         Write-Host '.' -NoNewline
         Start-Sleep -Seconds 3
     }
-    Write-Host ' Docker is running.'
+    Write-Host ' Docker is running.' -ForegroundColor Green
 }
 
 # Start downloading both images now, so they're ready or nearly ready by the
@@ -643,7 +643,7 @@ $N8nPull = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'pu
 # The list questions read from the runners image, so they wait for it first.
 function Wait-RunnersImage {
     if ($script:RunnersPull -and -not $script:RunnersPull.HasExited) {
-        Write-Host '  Waiting for the n8n download to finish so I can read the list...'
+        Write-Host '  Waiting for the n8n download to finish so I can read the list...' -ForegroundColor DarkGray
         $script:RunnersPull.WaitForExit()
     }
 }
@@ -882,7 +882,7 @@ $runnerArgs = @(
 Invoke-Docker @runnerArgs | Out-Null
 
 Write-Host ''
-Write-Host "Done. Open http://localhost:$($S.N8N_HOST_PORT)"
+Write-Host "Done. Open http://localhost:$($S.N8N_HOST_PORT)" -ForegroundColor Green
 Write-Host 'Check the runners connected with: docker logs n8n'
 Write-Host '(look for two lines starting with: Registered runner)'
 
@@ -898,18 +898,18 @@ if ($script:AskedQuestions) {
         if ($S.NIGHTLY_TIME -eq 'off') {
             if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
                 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
-                Write-Host 'The nightly update is turned off.'
+                Write-Host 'The nightly update is turned off.' -ForegroundColor Green
             }
         } else {
             $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoQuestions"
             $trigger = New-ScheduledTaskTrigger -Daily -At $S.NIGHTLY_TIME
             Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Description 'Keeps n8n up to date. Created by n8n-docker-task-runners-setup.ps1.' -Force -ErrorAction Stop | Out-Null
-            Write-Host "n8n will update itself every night at $(Show-Time $S.NIGHTLY_TIME)."
+            Write-Host "n8n will update itself every night at $(Show-Time $S.NIGHTLY_TIME)." -ForegroundColor Green
             Write-Host "Each run is logged to $(Join-Path $PSScriptRoot 'n8n-nightly.log')"
         }
     } catch {
         Write-Host "I couldn't set up the nightly update: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host 'The README shows how to add it by hand.'
+        Write-Host 'The README shows how to add it by hand.' -ForegroundColor Yellow
     }
 }
 

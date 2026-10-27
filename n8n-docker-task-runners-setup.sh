@@ -164,12 +164,26 @@ NIGHTLY_TIME="02:00"
 # Stop at the first command that fails.
 set -e
 
+# Colors make each kind of line easy to spot: cyan headers, bold questions,
+# gray hints, yellow "try again" notes, red errors, green good news. They only
+# appear in a real terminal, and never when NO_COLOR is set (no-color.org), so
+# the nightly log stays plain text.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C_HEAD=$'\033[1;36m' C_ASK=$'\033[1m' C_DIM=$'\033[2m' C_WARN=$'\033[33m'
+  C_ERR=$'\033[1;31m' C_OK=$'\033[32m' C_STAR=$'\033[36m' C_OFF=$'\033[0m'
+  # The two library questions look alike, so each language gets its own color.
+  C_JS=$'\033[1;33m' C_PY=$'\033[1;35m'
+else
+  C_HEAD="" C_ASK="" C_DIM="" C_WARN="" C_ERR="" C_OK="" C_STAR="" C_OFF=""
+  C_JS="" C_PY=""
+fi
+
 # Whenever the script stops early, point to the place to report a bug.
 trap 'status=$?
 if [ "$status" -ne 0 ]; then
   echo
-  echo "If this looks like a bug, please report it at"
-  echo "https://github.com/dtsoden/n8n-docker-task-runners/issues/new"
+  echo "${C_WARN}If this looks like a bug, please report it at${C_OFF}"
+  echo "${C_WARN}https://github.com/dtsoden/n8n-docker-task-runners/issues/new${C_OFF}"
 fi' EXIT
 
 # The settings file lives next to this script, wherever the script is run from.
@@ -190,7 +204,7 @@ for arg in "$@"; do
       echo "                  otherwise the values written in this script"
       echo "Settings file: $SETTINGS_FILE"
       exit 0 ;;
-    *) echo "Unknown option: $arg (try --help)"; exit 1 ;;
+    *) echo "${C_ERR}Unknown option: $arg (try --help)${C_OFF}"; exit 1 ;;
   esac
 done
 
@@ -235,7 +249,7 @@ load_settings() {
       *) echo "Ignoring unknown line in the settings file: $key"; continue ;;
     esac
     if ! valid "$key" "$value"; then
-      echo "The settings file has a value that doesn't work for $key: $value"
+      echo "${C_ERR}The settings file has a value that doesn't work for $key: $value${C_OFF}"
       echo "Fix it in $SETTINGS_FILE, or run with --reconfigure."
       exit 1
     fi
@@ -253,7 +267,7 @@ save_settings() {
       echo "$key=${!key}"
     done
   } > "$SETTINGS_FILE"
-  echo "Saved your answers to $SETTINGS_FILE"
+  echo "${C_OK}Saved your answers to $SETTINGS_FILE${C_OFF}"
 }
 
 # ---- Questions --------------------------------------------------------------
@@ -269,7 +283,7 @@ ask() {
     hint="Press Enter to leave this empty, or type something: "
   fi
   echo
-  echo "$2"
+  echo "${C_ASK}$2${C_OFF}"
   while true; do
     read -r -p "  $hint" answer
     [ -z "$answer" ] && answer="${!name}"
@@ -280,7 +294,7 @@ ask() {
       printf -v "$name" '%s' "$answer"
       return
     fi
-    echo "  Sorry, that won't work here. Have another go."
+    echo "${C_WARN}  Sorry, that won't work here. Have another go.${C_OFF}"
   done
 }
 
@@ -294,7 +308,7 @@ ask_yes_no() {
     hint="Press Enter for no, or type y for yes: "
   fi
   echo
-  echo "$1"
+  echo "${C_ASK}$1${C_OFF}"
   while true; do
     read -r -p "  $hint" answer
     answer="${answer:-$2}"
@@ -302,7 +316,7 @@ ask_yes_no() {
       [Yy]*) return 0 ;;
       [Nn]*) return 1 ;;
     esac
-    echo "  Please type y for yes or n for no."
+    echo "${C_WARN}  Please type y for yes or n for no.${C_OFF}"
   done
 }
 
@@ -360,7 +374,7 @@ menu() {
   local question="$1" default="$2" answer i=1 opt
   shift 2
   echo
-  echo "$question"
+  echo "${C_ASK}$question${C_OFF}"
   for opt in "$@"; do
     echo "  $i  $opt"
     i=$((i + 1))
@@ -372,7 +386,7 @@ menu() {
       MENU_CHOICE="$answer"
       return
     fi
-    echo "  Please type a number from 1 to $#."
+    echo "${C_WARN}  Please type a number from 1 to $#.${C_OFF}"
   done
 }
 
@@ -382,7 +396,7 @@ menu() {
 image_list() {
   local image="n8nio/runners:$N8N_VERSION"
   if ! docker image inspect "$image" >/dev/null 2>&1; then
-    echo "  Downloading the n8n runners image to read the list. This can take a minute..." >&2
+    echo "${C_DIM}  Downloading the n8n runners image to read the list. This can take a minute...${C_OFF}" >&2
     docker pull -q "$image" >/dev/null 2>&1 || return 0
   fi
   case "$1" in
@@ -406,7 +420,7 @@ show_list() {
     echo "  These come installed:"
     echo "$1" | sed 's/,/, /g' | fold -s -w 72 | sed 's/^/    /' | sed "s/ *$//"
   else
-    echo "  I couldn't read the list from Docker. The names are at $2"
+    echo "${C_WARN}  I couldn't read the list from Docker. The names are at $2${C_OFF}"
   fi
 }
 
@@ -424,38 +438,39 @@ pick_names() {
       done
     fi
     [ -z "$bad" ] && return
-    echo "  Not in the list:$bad. Check the spelling against the list above."
+    echo "${C_WARN}  Not in the list:$bad. Check the spelling against the list above.${C_OFF}"
   done
 }
 
-# new_screen "question 1 of 8": clears the screen so each question stands on
-# its own instead of scrolling under the ones before it.
+# new_screen "question 1 of 8, Data folder" [COLOR]: clears the screen so each
+# question stands on its own instead of scrolling under the ones before it.
+# COLOR replaces the usual header color.
 new_screen() {
   clear 2>/dev/null || printf '\033[2J\033[H'
-  echo "Setting up n8n: $1"
-  echo "If you're not sure, press Enter to take the suggested answer."
-  echo "Made a mistake? You can change any answer on the summary screen at the end."
+  echo "${2:-$C_HEAD}Setting up n8n: $1${C_OFF}"
+  echo "${C_DIM}If you're not sure, press Enter to take the suggested answer.${C_OFF}"
+  echo "${C_DIM}Made a mistake? You can change any answer on the summary screen at the end.${C_OFF}"
 }
 
 question_1() {
-  new_screen "question 1 of 8"
+  new_screen "question 1 of 8, Data folder"
   ask N8N_DATA_DIR "Where should n8n keep its workflows, credentials and other data?"
 }
 
 question_2() {
-  new_screen "question 2 of 8"
+  new_screen "question 2 of 8, Port"
   ask N8N_HOST_PORT "Which port number should n8n use? If you don't know what that means, just press Enter."
 }
 
 question_3() {
-  new_screen "question 3 of 8"
+  new_screen "question 3 of 8, Internet address"
   local has_url=n
   [ -n "$N8N_WEBHOOK_URL" ] && has_url=y
   if ask_yes_no "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." "$has_url"; then
     while true; do
       ask N8N_WEBHOOK_URL "What's that address? Include the https:// at the start."
       [ -n "$N8N_WEBHOOK_URL" ] && break
-      echo "  You said people will reach it from the internet, so I need the address."
+      echo "${C_WARN}  You said people will reach it from the internet, so I need the address.${C_OFF}"
     done
   else
     N8N_WEBHOOK_URL=""
@@ -463,23 +478,23 @@ question_3() {
 }
 
 question_4() {
-  new_screen "question 4 of 8"
+  new_screen "question 4 of 8, Code node time limit"
   ask TASK_TIMEOUT "How many seconds should a Code node get to finish before n8n stops it? The suggestion is $(show_seconds "$TASK_TIMEOUT"). For 10 minutes, type 600."
 }
 
 question_5() {
-  new_screen "question 5 of 8"
+  new_screen "question 5 of 8, JavaScript libraries" "$C_JS"
   echo
-  echo "Allowing everything is easiest, but it also lets a Code node do more on"
-  echo "the machine it runs on. If you want to read up before deciding, see"
-  echo "https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners"
+  echo "${C_DIM}Allowing everything is easiest, but it also lets a Code node do more on${C_OFF}"
+  echo "${C_DIM}the machine it runs on. If you want to read up before deciding, see${C_OFF}"
+  echo "${C_DIM}https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners${C_OFF}"
   local js_default=4 js_now=""
   if [ "$JS_BUILTIN_ALLOW" = "*" ] && [ "$JS_EXTERNAL_ALLOW" = "*" ]; then js_default=1
   elif [ "$JS_BUILTIN_ALLOW" = crypto ] && [ "$JS_EXTERNAL_ALLOW" = moment ]; then js_default=2
   elif [ -z "$JS_BUILTIN_ALLOW" ] && [ -z "$JS_EXTERNAL_ALLOW" ]; then js_default=3
   else js_now=" (you have $(show_value "$JS_BUILTIN_ALLOW") and $(show_value "$JS_EXTERNAL_ALLOW") now)"
   fi
-  menu "Which libraries can JavaScript Code nodes use?" "$js_default" \
+  menu "${C_JS}Which libraries can JavaScript Code nodes use?${C_OFF}" "$js_default" \
     "Everything that comes installed" \
     "Just crypto and moment" \
     "None" \
@@ -491,13 +506,13 @@ question_5() {
     4)
       local list
       echo
-      echo "First, Node.js built-in libraries."
+      echo "${C_ASK}First, Node.js built-in libraries.${C_OFF}"
       wait_for_runners_image
       list="$(image_list js-builtin)"
       show_list "$list" "https://nodejs.org/api/"
       pick_names JS_BUILTIN_ALLOW "Type the ones to allow, separated by commas:" "$list"
       echo
-      echo "Now npm packages."
+      echo "${C_ASK}Now npm packages.${C_OFF}"
       list="$(image_list js-npm)"
       show_list "$list" "https://github.com/n8n-io/n8n/tree/master/docker/images/runners"
       pick_names JS_EXTERNAL_ALLOW "Type the ones to allow, separated by commas:" "$list"
@@ -509,18 +524,18 @@ question_5() {
 # Python's extra packages in the image are only the runner's own plumbing,
 # so they follow the standard library answer instead of getting a question.
 question_6() {
-  new_screen "question 6 of 8"
+  new_screen "question 6 of 8, Python libraries" "$C_PY"
   echo
-  echo "Allowing everything is easiest, but it also lets a Code node do more on"
-  echo "the machine it runs on. If you want to read up before deciding, see"
-  echo "https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners"
+  echo "${C_DIM}Allowing everything is easiest, but it also lets a Code node do more on${C_OFF}"
+  echo "${C_DIM}the machine it runs on. If you want to read up before deciding, see${C_OFF}"
+  echo "${C_DIM}https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/harden-task-runners${C_OFF}"
   local py_common="json,datetime,math,re,random,statistics" py_default=4 py_now=""
   if [ "$PY_STDLIB_ALLOW" = "*" ]; then py_default=1
   elif [ "$PY_STDLIB_ALLOW" = "$py_common" ]; then py_default=2
   elif [ -z "$PY_STDLIB_ALLOW" ]; then py_default=3
   else py_now=" (you have $PY_STDLIB_ALLOW now)"
   fi
-  menu "Which libraries can Python Code nodes use?" "$py_default" \
+  menu "${C_PY}Which libraries can Python Code nodes use?${C_OFF}" "$py_default" \
     "Everything in Python's standard library" \
     "Just json, datetime, math, re, random and statistics" \
     "None" \
@@ -542,7 +557,7 @@ question_6() {
 }
 
 question_7() {
-  new_screen "question 7 of 8"
+  new_screen "question 7 of 8, Execute Command and Local File Trigger"
   echo
   echo "n8n 2.0 and later switch off two nodes that can run commands and read"
   echo "files on this computer: Execute Command and Local File Trigger."
@@ -556,14 +571,14 @@ question_7() {
 }
 
 question_8() {
-  new_screen "question 8 of 8"
+  new_screen "question 8 of 8, Nightly update"
   local nightly_default=y answer t
   [ "$NIGHTLY_TIME" = off ] && nightly_default=n
   if ask_yes_no "Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on at that time." "$nightly_default"; then
     [ "$NIGHTLY_TIME" = off ] && NIGHTLY_TIME="02:00"
     echo
-    echo "What time should it run? n8n is down for a few seconds while it updates,"
-    echo "so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00."
+    echo "${C_ASK}What time should it run? n8n is down for a few seconds while it updates,${C_OFF}"
+    echo "${C_ASK}so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00.${C_OFF}"
     while true; do
       read -r -p "  Press Enter for $(show_time "$NIGHTLY_TIME"), or type a time: " answer
       t="$(normalize_time "${answer:-$NIGHTLY_TIME}")"
@@ -571,7 +586,7 @@ question_8() {
         NIGHTLY_TIME="$t"
         break
       fi
-      echo "  Sorry, I didn't understand that time. Try something like 2am or 23:00."
+      echo "${C_WARN}  Sorry, I didn't understand that time. Try something like 2am or 23:00.${C_OFF}"
     done
   else
     NIGHTLY_TIME=off
@@ -585,15 +600,15 @@ run_questions() {
   for n in 1 2 3 4 5 6 7 8; do "question_$n"; done
   while true; do
     clear 2>/dev/null || printf '\033[2J\033[H'
-    echo "Setting up n8n: check your answers"
+    echo "${C_HEAD}Setting up n8n: check your answers${C_OFF}"
     echo
     echo "  1  Data folder:                    $N8N_DATA_DIR"
     echo "  2  Port:                           $N8N_HOST_PORT"
     echo "  3  Internet address:               ${N8N_WEBHOOK_URL:-none, this computer only}"
     echo "  4  Code node time limit:           $(show_seconds "$TASK_TIMEOUT")"
-    echo "  5  JavaScript built-in libraries:  $(show_value "$JS_BUILTIN_ALLOW")"
-    echo "     JavaScript npm packages:        $(show_value "$JS_EXTERNAL_ALLOW")"
-    echo "  6  Python libraries:               $(show_value "$PY_STDLIB_ALLOW")"
+    echo "${C_JS}  5  JavaScript built-in libraries:  $(show_value "$JS_BUILTIN_ALLOW")"
+    echo "     JavaScript npm packages:        $(show_value "$JS_EXTERNAL_ALLOW")${C_OFF}"
+    echo "${C_PY}  6  Python libraries:               $(show_value "$PY_STDLIB_ALLOW")${C_OFF}"
     echo "  7  Execute Command and Local File: $ENABLE_EXEC_NODES"
     if [ "$NIGHTLY_TIME" = off ]; then
       echo "  8  Nightly update:                 off"
@@ -601,9 +616,9 @@ run_questions() {
       echo "  8  Nightly update:                 every night at $(show_time "$NIGHTLY_TIME")"
     fi
     echo
-    echo "You can also change any of this later by running the script with --reconfigure."
-    echo "To quit without saving anything, press Ctrl+C."
-    if [ -n "$note" ]; then echo; echo "  $note"; note=""; fi
+    echo "${C_DIM}You can also change any of this later by running the script with --reconfigure.${C_OFF}"
+    echo "${C_DIM}To quit without saving anything, press Ctrl+C.${C_OFF}"
+    if [ -n "$note" ]; then echo; echo "${C_WARN}  $note${C_OFF}"; note=""; fi
     echo
     read -r -p "  Press Enter to save and start n8n, or type a number to change that answer: " answer || answer=""
     case "$answer" in
@@ -623,7 +638,7 @@ run_questions() {
 # an answer.
 
 if [ "$RECONFIGURE" = yes ] && [ ! -t 0 ]; then
-  echo "--reconfigure needs someone at the keyboard to answer the questions."
+  echo "${C_ERR}--reconfigure needs someone at the keyboard to answer the questions.${C_OFF}"
   exit 1
 fi
 
@@ -646,7 +661,7 @@ start_docker() {
 }
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker isn't installed on this computer, and n8n runs inside it."
+  echo "${C_ERR}Docker isn't installed on this computer, and n8n runs inside it.${C_OFF}"
   echo "Install Docker Desktop from https://www.docker.com/products/docker-desktop/"
   echo "(on Linux, Docker Engine works too), start it, then run this script again."
   exit 1
@@ -659,7 +674,7 @@ if ! docker info >/dev/null 2>&1; then
       exit 1
     fi
   else
-    echo "Docker isn't running. Trying to start it..."
+    echo "${C_WARN}Docker isn't running. Trying to start it...${C_OFF}"
   fi
   start_docker || true
   printf "Waiting for Docker to start"
@@ -668,14 +683,14 @@ if ! docker info >/dev/null 2>&1; then
     tries=$((tries + 1))
     if [ "$tries" -gt 60 ]; then
       echo
-      echo "Docker still isn't running after 3 minutes. Open Docker yourself, wait"
-      echo "until it says it's running, then run this script again."
+      echo "${C_ERR}Docker still isn't running after 3 minutes. Open Docker yourself, wait${C_OFF}"
+      echo "${C_ERR}until it says it's running, then run this script again.${C_OFF}"
       exit 1
     fi
     printf "."
     sleep 3
   done
-  echo " Docker is running."
+  echo "${C_OK} Docker is running.${C_OFF}"
 fi
 
 # Start downloading both images now, so they're ready or nearly ready by the
@@ -688,7 +703,7 @@ N8N_PULL_PID=$!
 # The list questions read from the runners image, so they wait for it first.
 wait_for_runners_image() {
   if [ -n "$RUNNERS_PULL_PID" ]; then
-    echo "  Waiting for the n8n download to finish so I can read the list..."
+    echo "${C_DIM}  Waiting for the n8n download to finish so I can read the list...${C_OFF}"
     wait "$RUNNERS_PULL_PID" || true
     RUNNERS_PULL_PID=""
   fi
@@ -709,7 +724,7 @@ fi
 # Values typed straight into this script are checked here too.
 for key in $SETTING_NAMES; do
   if ! valid "$key" "${!key}"; then
-    echo "The value for $key doesn't work: ${!key}"
+    echo "${C_ERR}The value for $key doesn't work: ${!key}${C_OFF}"
     exit 1
   fi
 done
@@ -898,7 +913,7 @@ docker run -d \
   "n8nio/runners:$N8N_VERSION"
 
 echo
-echo "Done. Open http://localhost:$N8N_HOST_PORT"
+echo "${C_OK}Done. Open http://localhost:$N8N_HOST_PORT${C_OFF}"
 echo "Check the runners connected with: docker logs n8n"
 echo "(look for two lines starting with: Registered runner)"
 
@@ -911,23 +926,23 @@ CRON_TAG="# n8n-docker-task-runners nightly update"
 if [ "$ASKED_QUESTIONS" = yes ]; then
   echo
   if ! command -v crontab >/dev/null 2>&1; then
-    echo "I couldn't find cron on this computer, so I can't set up the nightly"
-    echo "update. The README shows other ways to schedule it."
+    echo "${C_WARN}I couldn't find cron on this computer, so I can't set up the nightly${C_OFF}"
+    echo "${C_WARN}update. The README shows other ways to schedule it.${C_OFF}"
   else
     other_lines="$(crontab -l 2>/dev/null | grep -vF "$CRON_TAG" || true)"
     if [ "$NIGHTLY_TIME" = off ]; then
       if crontab -l 2>/dev/null | grep -qF "$CRON_TAG"; then
         printf '%s\n' "$other_lines" | crontab -
-        echo "The nightly update is turned off."
+        echo "${C_OK}The nightly update is turned off.${C_OFF}"
       fi
     else
       script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
       cron_line="$((10#${NIGHTLY_TIME#*:})) $((10#${NIGHTLY_TIME%%:*})) * * * PATH='$PATH' '$script_path' --no-questions >> '$SCRIPT_DIR/n8n-nightly.log' 2>&1 $CRON_TAG"
       if { if [ -n "$other_lines" ]; then printf '%s\n' "$other_lines"; fi; echo "$cron_line"; } | crontab -; then
-        echo "n8n will update itself every night at $(show_time "$NIGHTLY_TIME")."
+        echo "${C_OK}n8n will update itself every night at $(show_time "$NIGHTLY_TIME").${C_OFF}"
         echo "Each run is logged to $SCRIPT_DIR/n8n-nightly.log"
       else
-        echo "I couldn't set up the nightly update. The README shows how to add it by hand."
+        echo "${C_WARN}I couldn't set up the nightly update. The README shows how to add it by hand.${C_OFF}"
       fi
     fi
   fi
@@ -939,7 +954,7 @@ if [ -t 0 ]; then
   echo "Want to change an answer later? Run this script again like this:"
   echo "  $0 --reconfigure"
   echo
-  echo "If this saved you some time, please give it a star on GitHub. Stars are"
-  echo "how other n8n users find it. The Star button is at the top right of:"
-  echo "https://github.com/dtsoden/n8n-docker-task-runners"
+  echo "${C_STAR}If this saved you some time, please give it a star on GitHub. Stars are${C_OFF}"
+  echo "${C_STAR}how other n8n users find it. The Star button is at the top right of:${C_OFF}"
+  echo "${C_STAR}https://github.com/dtsoden/n8n-docker-task-runners${C_OFF}"
 fi
