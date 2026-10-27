@@ -877,6 +877,17 @@ newest_in_major() {  # newest_in_major 2: the newest stable 2.x.y release on Doc
   done
 }
 
+version_lt() {  # version_lt A B: true when release A is older than release B
+  local IFS=. i
+  local -a a b
+  a=($1); b=($2)
+  for i in 0 1 2; do
+    [ "${a[i]}" -lt "${b[i]}" ] && return 0
+    [ "${a[i]}" -gt "${b[i]}" ] && return 1
+  done
+  return 1
+}
+
 ask_major_upgrade() {  # ask_major_upgrade CURRENT NEWEST
   local new_major="${2%%.*}"
   clear 2>/dev/null || printf '\033[2J\033[H'
@@ -920,6 +931,13 @@ if [ "$N8N_VERSION" = latest ]; then
     fi
   else
     # Already on something newer than latest, such as a beta. Leave it.
+    IMAGE_TAG="$CURRENT_VERSION"
+  fi
+  # Never move back to an older release: n8n doesn't support downgrades, and
+  # its database may already have the newer version's changes.
+  if [[ "$CURRENT_VERSION" =~ $RE_VERSION ]] && [[ "$IMAGE_TAG" =~ $RE_VERSION ]] \
+     && version_lt "$IMAGE_TAG" "$CURRENT_VERSION"; then
+    echo "${C_WARN}You're on n8n $CURRENT_VERSION, newer than $IMAGE_TAG. Staying on $CURRENT_VERSION.${C_OFF}"
     IMAGE_TAG="$CURRENT_VERSION"
   fi
 fi
