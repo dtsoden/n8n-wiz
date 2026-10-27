@@ -46,13 +46,41 @@ No git? Download the repo as a ZIP from the green Code button and unzip it. On W
 
 Then open http://localhost:5678 (or the port you chose).
 
+## What happens when you run it
+
+1. It checks that Docker is installed. If it isn't, it gives you the Docker Desktop download link and stops.
+2. It checks that Docker is running. If it isn't, it asks whether to start it, starts it, and waits up to three minutes for it to come up.
+3. It starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
+4. The first time, or with `--reconfigure`, it asks eight questions, one per screen, then shows all your answers on one screen to confirm before saving them. Later runs skip this and read the saved answers.
+5. It finishes the downloads. Only then does it remove the old containers, so a failed download leaves your current n8n running.
+6. It creates the Docker network if needed, writes `task-runners.json` to your data folder, and starts the two containers.
+7. If you answered the questions, it sets up or removes the nightly schedule to match.
+8. It prints the address to open and how to check that the runners connected.
+
+If anything goes wrong along the way, the script stops and ends with a link to report the bug.
+
 ## Two ways to set it up
 
 ### Answer the questions
 
-Run the script. It first checks that Docker is installed and running, and offers to start Docker if it isn't. The first time, it then asks a few questions, each with a suggested answer you take by pressing Enter: where to keep your data, which port, whether n8n has a public address, how long a Code node may run, which libraries JavaScript and Python Code nodes may load, whether to turn Execute Command and Local File Trigger back on, and whether it should run by itself every night and at what time. The images download in the background while you answer. Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
+Run the script. The first time, it asks eight questions, each on its own screen with a suggested answer. If you're not sure, press Enter to take the suggestion. For yes or no questions, `y` and `n` are enough.
 
-For the libraries you get a menu: everything that comes installed, a short common set, none, or your own pick. If you pick your own, the script reads the full list from the runners image you're about to run and shows it so you can copy names. It turns down any name that isn't on the list.
+| Question | Suggested answer |
+|---|---|
+| Where should n8n keep its data? | `~/n8n`, or `C:\Users\<you>\n8n` on Windows |
+| Which port should n8n use? | 5678 |
+| Will anyone reach it from the internet? If yes, at what address? | No |
+| How many seconds may a Code node run? | 300 seconds (5 minutes) |
+| Which libraries can JavaScript Code nodes use? | Just `crypto` and `moment` |
+| Which libraries can Python Code nodes use? | Everything in Python's standard library |
+| Switch Execute Command and Local File Trigger back on? | Yes |
+| Run by itself every night? If yes, at what time? | Yes, at 2:00 AM |
+
+The two library questions are menus: everything that comes installed, a short common set, none, or your own pick. If you pick your own, the script reads the full list from the runners image you're about to run and shows it so you can copy names. It turns down any name that isn't on the list, so a typo can't slip through.
+
+Times can be typed the way you'd say them: `2am`, `2:30pm`, `11pm` or `23:00` all work.
+
+Your answers go into `n8n-docker-task-runners-settings.env`, and every later run reads that file without asking anything.
 
 The questions don't ask which n8n version to run. Every run uses `latest`, which is the point of the script.
 
