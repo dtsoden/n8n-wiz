@@ -64,7 +64,7 @@ If you're setting this up for a company, read Docker's licence terms first. Dock
 1. It checks that Docker is installed. If it isn't, it gives you the Docker Desktop download link and stops.
 2. It checks that Docker is running. If it isn't, it asks whether to start it, starts it, and waits up to three minutes for it to come up.
 3. It starts downloading the n8n and runners images in the background, so they're ready or nearly ready when you finish the questions.
-4. The first time, or with `--reconfigure`, it asks eight questions, one per screen, then shows all your answers on one numbered summary screen. Type a number there to redo that question, or press Enter to save. Later runs skip this and read the saved answers.
+4. The first time, or with `--reconfigure`, it shows a welcome screen, then asks eight questions, one per screen, then shows all your answers on one numbered summary screen. Type a number there to redo that question, or press Enter to save. Later runs skip this and read the saved answers.
 5. It finishes the downloads. Only then does it remove the old containers, so a failed download leaves your current n8n running.
 6. It creates the Docker network and the data and `files` folders if needed, writes `task-runners.json` to your data folder, and starts the two containers.
 7. If you answered the questions, it sets up or removes the nightly schedule to match.

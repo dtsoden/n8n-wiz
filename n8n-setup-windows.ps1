@@ -438,6 +438,20 @@ function Read-Names([string]$Name, [string]$Question, [string]$List) {
     }
 }
 
+# Prints the n8n wiz title in the header color.
+function Show-Banner {
+    Write-Host @'
+            /$$$$$$                                /$$
+           /$$__  $$                              |__/
+ /$$$$$$$ | $$  \ $$ /$$$$$$$        /$$  /$$  /$$ /$$ /$$$$$$$$
+| $$__  $$|  $$$$$$/| $$__  $$      | $$ | $$ | $$| $$|____ /$$/
+| $$  \ $$ >$$__  $$| $$  \ $$      | $$ | $$ | $$| $$   /$$$$/
+| $$  | $$| $$  \ $$| $$  | $$      | $$ | $$ | $$| $$  /$$__/
+| $$  | $$|  $$$$$$/| $$  | $$      |  $$$$$/$$$$/| $$ /$$$$$$$$
+|__/  |__/ \______/ |__/  |__/       \_____/\___/ |__/|________/
+'@ -ForegroundColor Cyan
+}
+
 # Clears the screen so each question stands on its own instead of scrolling
 # under the ones before it.
 function Show-NewScreen([string]$Title, [string]$Color = 'Cyan') {
@@ -590,6 +604,14 @@ function Invoke-Question8 {
 # Every answer on one numbered screen. Typing a number shows that question
 # again, so a mistake is easy to fix before anything is saved.
 function Invoke-Questions {
+    try { Clear-Host } catch { Write-Host '' }
+    Show-Banner
+    Write-Host ''
+    Write-Host "Welcome. This sets up n8n on this computer and keeps it up to date."
+    Write-Host "You'll answer 8 quick questions, each with a suggested answer. If you're"
+    Write-Host "not sure, press Enter to take it. You can fix any answer at the end."
+    Write-Host ''
+    Read-Host '  Press Enter to start' | Out-Null
     foreach ($n in 1..8) { & "Invoke-Question$n" }
     $note = ''
     while ($true) {
@@ -630,6 +652,12 @@ function Invoke-Questions {
 # catches most other cases.
 
 $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+
+# The title shows whenever someone is watching, but never in the nightly log.
+if ($interactive -and -not $NoQuestions) {
+    Show-Banner
+    Write-Host ''
+}
 
 if ($Reconfigure -and -not $interactive) {
     Write-Host '-Reconfigure needs someone at the keyboard to answer the questions.' -ForegroundColor Red
@@ -692,6 +720,8 @@ function Invoke-Remove {
         exit 1
     }
     try { Clear-Host } catch { Write-Host '' }
+    Show-Banner
+    Write-Host ''
     Write-Host 'Removing n8n from this computer' -ForegroundColor Cyan
     Write-Host ''
     Write-Host 'This will:'

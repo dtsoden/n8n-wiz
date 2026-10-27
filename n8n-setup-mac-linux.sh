@@ -461,6 +461,22 @@ pick_names() {
   done
 }
 
+# show_banner prints the n8n wiz title in the header color.
+show_banner() {
+  printf '%s' "$C_HEAD"
+  cat <<'BANNER'
+            /$$$$$$                                /$$
+           /$$__  $$                              |__/
+ /$$$$$$$ | $$  \ $$ /$$$$$$$        /$$  /$$  /$$ /$$ /$$$$$$$$
+| $$__  $$|  $$$$$$/| $$__  $$      | $$ | $$ | $$| $$|____ /$$/
+| $$  \ $$ >$$__  $$| $$  \ $$      | $$ | $$ | $$| $$   /$$$$/
+| $$  | $$| $$  \ $$| $$  | $$      | $$ | $$ | $$| $$  /$$__/
+| $$  | $$|  $$$$$$/| $$  | $$      |  $$$$$/$$$$/| $$ /$$$$$$$$
+|__/  |__/ \______/ |__/  |__/       \_____/\___/ |__/|________/
+BANNER
+  printf '%s' "$C_OFF"
+}
+
 # new_screen "question 1 of 8, Data folder" [COLOR]: clears the screen so each
 # question stands on its own instead of scrolling under the ones before it.
 # COLOR replaces the usual header color.
@@ -628,6 +644,14 @@ question_8() {
 # again, so a mistake is easy to fix before anything is saved.
 run_questions() {
   local n answer note=""
+  clear 2>/dev/null || printf '\033[2J\033[H'
+  show_banner
+  echo
+  echo "Welcome. This sets up n8n on this computer and keeps it up to date."
+  echo "You'll answer 8 quick questions, each with a suggested answer. If you're"
+  echo "not sure, press Enter to take it. You can fix any answer at the end."
+  echo
+  read -r -p "  Press Enter to start: " answer || true
   for n in 1 2 3 4 5 6 7 8; do "question_$n"; done
   while true; do
     clear 2>/dev/null || printf '\033[2J\033[H'
@@ -667,6 +691,12 @@ run_questions() {
 # running before asking anything. [ -t 0 ] is true when someone is at the
 # keyboard. Under cron it is false, so a scheduled run never stops to wait for
 # an answer.
+
+# The title shows whenever someone is watching, but never in the nightly log.
+if [ -t 0 ] && [ "$NO_QUESTIONS" != yes ]; then
+  show_banner
+  echo
+fi
 
 if [ "$RECONFIGURE" = yes ] && [ ! -t 0 ]; then
   echo "${C_ERR}--reconfigure needs someone at the keyboard to answer the questions.${C_OFF}"
@@ -736,6 +766,8 @@ run_remove() {
     exit 1
   fi
   clear 2>/dev/null || printf '\033[2J\033[H'
+  show_banner
+  echo
   echo "${C_HEAD}Removing n8n from this computer${C_OFF}"
   echo
   echo "This will:"
