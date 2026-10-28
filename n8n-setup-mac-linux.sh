@@ -32,7 +32,8 @@
 #      (same version for both).
 #   3. Works out your settings, asking the setup questions the first time.
 #   4. Finishes the downloads, then stops and removes any old "n8n" and
-#      "n8n-runners" containers.
+#      "n8n-runners" containers. If the "n8n" container wasn't set up by this
+#      script, a run at the keyboard asks first.
 #   5. Creates the data folder and its "files" folder, and writes the launcher
 #      config file task-runners.json there.
 #   6. Creates a shared random token and starts two containers on one network:
@@ -67,7 +68,13 @@
 #                    otherwise the values written in this script
 #   --remove         uninstall: remove n8n, its images, the nightly update and
 #                    the saved answers. Asks before deleting your workflows.
-#   --help           show these options
+#   --update         replace this script with the newest n8n wiz release. Your
+#                    settings file stays as it is, and the old script is kept
+#                    next to it as .previous.
+#   --help           show these options and this script's version
+#
+#   Every run checks GitHub for a newer n8n wiz and says so when there is one.
+#   The script never updates itself; that only happens with --update.
 #
 # Provided as is, as a convenience. I have run this script nightly for over a
 # year to keep a community edition instance current. Read the docs below and
@@ -95,15 +102,15 @@
 #   and the script falls back to /dev/urandom if it is missing.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 123  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 129  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 132  N8N_HOST_PORT       port you open in the browser
-#   Line 137  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 140  DOCKER_NETWORK      only if you already use a different network name
-#   Line 145  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 158 to 161  JS_* and PY_*  modules the Code node may import
-#   Line 166  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 171  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 130  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 136  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 139  N8N_HOST_PORT       port you open in the browser
+#   Line 144  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 147  DOCKER_NETWORK      only if you already use a different network name
+#   Line 152  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 165 to 168  JS_* and PY_*  modules the Code node may import
+#   Line 173  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 181  NIGHTLY_TIME        time of the nightly update, auto or off
 #
 # How to run
 #   bash n8n-setup-mac-linux.sh
@@ -165,15 +172,18 @@ PY_EXTERNAL_ALLOW="*"
 # node). "no" leaves n8n's default in place.
 ENABLE_EXEC_NODES="yes"
 
-# When the script runs by itself every night, as 24-hour HH:MM, or "off". The
-# setup questions add or remove the cron entry for you. If you edit this file
-# instead, add the cron line yourself (the README shows it).
-NIGHTLY_TIME="02:00"
+# When the script runs by itself every night, as 24-hour HH:MM, or "off".
+# "auto" has the setup questions suggest a time for your time zone: a few
+# hours after n8n usually releases, so you get each new version within hours
+# (README, "Picking a time"). The setup questions add or remove the cron entry
+# for you. If you edit this file instead, add the cron line yourself (the
+# README shows it).
+NIGHTLY_TIME="auto"
 
 # ---- Nothing below this line needs editing ----------------------------------
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-SCRIPT_VERSION="1.2.1"
+SCRIPT_VERSION="1.3.0"
 
 # Stop at the first command that fails.
 set -e
@@ -258,7 +268,7 @@ valid() {
     TASK_TIMEOUT)               [[ "$2" =~ $RE_NUMBER ]] && [ "$2" -ge 1 ] ;;
     JS_*|PY_*)                  [[ "$2" =~ $RE_ALLOW ]] ;;
     ENABLE_EXEC_NODES)          [ "$2" = yes ] || [ "$2" = no ] ;;
-    NIGHTLY_TIME)               [ "$2" = off ] || [[ "$2" =~ $RE_TIME ]] ;;
+    NIGHTLY_TIME)               [ "$2" = off ] || [ "$2" = auto ] || [[ "$2" =~ $RE_TIME ]] ;;
     *)                          false ;;
   esac
 }
@@ -385,6 +395,19 @@ show_time() {
   h=$((h % 12))
   if [ "$h" -eq 0 ]; then h=12; fi
   echo "$h:$m $half"
+}
+
+# n8n usually publishes new versions on weekdays around 07:20 UTC. The nightly
+# update is suggested for 11:30 UTC (6:30 AM US Eastern Standard Time), a few
+# hours later, so it picks each one up within hours. utc_to_local 690 prints
+# 11:30 UTC (690 minutes after midnight) as this computer's local HH:MM.
+utc_to_local() {
+  local z off t
+  z="$(date +%z)"   # such as -0500 or +0530
+  off=$(( 10#${z:1:2} * 60 + 10#${z:3:2} ))
+  if [ "${z:0:1}" = "-" ]; then off=$(( -off )); fi
+  t=$(( ($1 + off + 1440) % 1440 ))
+  printf '%02d:%02d' $(( t / 60 )) $(( t % 60 ))
 }
 
 show_seconds() {
@@ -634,13 +657,24 @@ question_7() {
 
 question_8() {
   new_screen "question 8 of 8, Nightly update"
-  local nightly_default=y answer t
+  local nightly_default=y answer t suggested=no
   [ "$NIGHTLY_TIME" = off ] && nightly_default=n
   if ask_yes_no "Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on at that time." "$nightly_default"; then
-    [ "$NIGHTLY_TIME" = off ] && NIGHTLY_TIME="02:00"
+    # A saved time stays as it is. Otherwise suggest 11:30 UTC in local time,
+    # or 2:00 AM where that falls in the daytime (9 AM or later).
+    if [ "$NIGHTLY_TIME" = off ] || [ "$NIGHTLY_TIME" = auto ]; then
+      NIGHTLY_TIME="$(utc_to_local 690)"
+      suggested=yes
+      if [ "$((10#${NIGHTLY_TIME%%:*}))" -ge 9 ]; then NIGHTLY_TIME="02:00"; suggested=night; fi
+    fi
     echo
     echo "${C_ASK}What time should it run? n8n is down for a few seconds while it updates,${C_OFF}"
     echo "${C_ASK}so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00.${C_OFF}"
+    echo "${C_DIM}New n8n versions usually come out on weekdays around $(show_time "$(utc_to_local 440)") your time.${C_OFF}"
+    case "$suggested" in
+      yes)   echo "${C_DIM}Running at $(show_time "$NIGHTLY_TIME"), a few hours later, gets you each one within hours.${C_OFF}" ;;
+      night) echo "${C_DIM}That's during your day, so 2:00 AM is suggested. It gets each one that night.${C_OFF}" ;;
+    esac
     while true; do
       read -r -p "  Press Enter for $(show_time "$NIGHTLY_TIME"), or type a time: " answer
       t="$(normalize_time "${answer:-$NIGHTLY_TIME}")"

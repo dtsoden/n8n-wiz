@@ -31,7 +31,8 @@
 #      (same version for both).
 #   3. Works out your settings, asking the setup questions the first time.
 #   4. Finishes the downloads, then stops and removes any old "n8n" and
-#      "n8n-runners" containers.
+#      "n8n-runners" containers. If the "n8n" container wasn't set up by this
+#      script, a run at the keyboard asks first.
 #   5. Creates the data folder and its "files" folder, and writes the launcher
 #      config file task-runners.json there.
 #   6. Creates a shared random token and starts two containers on one network:
@@ -73,6 +74,13 @@
 #                   Task Scheduler.
 #   -Remove         uninstall: remove n8n, its images, the nightly update and
 #                   the saved answers. Asks before deleting your workflows.
+#   -Update         replace this script with the newest n8n wiz release. Your
+#                   settings file stays as it is, and the old script is kept
+#                   next to it as .previous.
+#   -Help           show these options and this script's version
+#
+#   Every run checks GitHub for a newer n8n wiz and says so when there is one.
+#   The script never updates itself; that only happens with -Update.
 #
 # Provided as is, as a convenience. I have run this script nightly for over a
 # year to keep a community edition instance current. Read the docs below and
@@ -99,15 +107,15 @@
 #   larger businesses, so check Docker's licence terms before using it at work.
 #
 # Settings you can edit directly (line numbers refer to this file as published)
-#   Line 156  N8N_DATA_DIR        folder on your machine for n8n data
-#   Line 162  N8N_VERSION         n8n version; the runners image uses the same one
-#   Line 165  N8N_HOST_PORT       port you open in the browser
-#   Line 171  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
-#   Line 174  DOCKER_NETWORK      only if you already use a different network name
-#   Line 179  TASK_TIMEOUT        seconds a Code node may run before it is stopped
-#   Lines 192 to 195  JS_* and PY_*  modules the Code node may import
-#   Line 200  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
-#   Line 205  NIGHTLY_TIME        time of the nightly update, or off
+#   Line 164  N8N_DATA_DIR        folder on your machine for n8n data
+#   Line 170  N8N_VERSION         n8n version; the runners image uses the same one
+#   Line 173  N8N_HOST_PORT       port you open in the browser
+#   Line 179  N8N_WEBHOOK_URL     the public address of your n8n, if it has one
+#   Line 182  DOCKER_NETWORK      only if you already use a different network name
+#   Line 187  TASK_TIMEOUT        seconds a Code node may run before it is stopped
+#   Lines 200 to 203  JS_* and PY_*  modules the Code node may import
+#   Line 208  ENABLE_EXEC_NODES   Execute Command and Local File Trigger on or off
+#   Line 216  NIGHTLY_TIME        time of the nightly update, auto or off
 #
 # How to run (from the folder holding this file)
 #   powershell -ExecutionPolicy Bypass -File .\n8n-setup-windows.ps1
@@ -140,7 +148,7 @@ foreach ($word in $args) {
         '^(--?|/)?(h|help|\?)$'  { $ShowHelp = $true }
         default {
             Write-Host "I don't recognize this option: $word" -ForegroundColor Red
-            Write-Host 'The options are -Reconfigure, -NoQuestions, -Remove and -Update.'
+            Write-Host 'The options are -Reconfigure, -NoQuestions, -Remove, -Update and -Help.'
             exit 1
         }
     }
@@ -200,13 +208,16 @@ $S = [ordered]@{
     ENABLE_EXEC_NODES = 'yes'
 
     # When the script runs by itself every night, as 24-hour HH:MM, or 'off'.
-    # The setup questions add or remove the scheduled task for you. If you edit
-    # this file instead, create the task yourself (the README shows how).
-    NIGHTLY_TIME      = '02:00'
+    # 'auto' has the setup questions suggest a time for your time zone: a few
+    # hours after n8n usually releases, so you get each new version within
+    # hours (README, "Picking a time"). The setup questions add or remove the
+    # scheduled task for you. If you edit this file instead, create the task
+    # yourself (the README shows how).
+    NIGHTLY_TIME      = 'auto'
 }
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-$ScriptVersion = '1.2.1'
+$ScriptVersion = '1.3.0'
 
 # ---- Nothing below this line needs editing ----------------------------------
 
@@ -214,9 +225,12 @@ if ($ShowHelp) {
     Write-Host "n8n-setup-windows.ps1 version $ScriptVersion"
     Write-Host 'Options:'
     Write-Host '  -Reconfigure   ask the setup questions again and save new answers'
-    Write-Host '  -NoQuestions   never ask; use the saved answers'
-    Write-Host '  -Remove        uninstall n8n; asks before deleting your workflows'
+    Write-Host '  -NoQuestions   never ask; use the settings file if there is one,'
+    Write-Host '                 otherwise the values written in this script'
+    Write-Host '  -Remove        uninstall n8n, its images, the nightly update and the'
+    Write-Host '                 saved answers; asks before deleting your workflows'
     Write-Host '  -Update        replace this script with the newest n8n wiz release'
+    Write-Host "Settings file: $(Join-Path $PSScriptRoot 'n8n-docker-task-runners-settings.env')"
     exit 0
 }
 
@@ -259,7 +273,7 @@ function Test-Setting([string]$Name, [string]$Value) {
         'JS_*'              { return $Value -match '^[A-Za-z0-9_.,*@/-]*$' }
         'PY_*'              { return $Value -match '^[A-Za-z0-9_.,*@/-]*$' }
         'ENABLE_EXEC_NODES' { return ($Value -eq 'yes') -or ($Value -eq 'no') }
-        'NIGHTLY_TIME'      { return ($Value -eq 'off') -or ($Value -match '^([01][0-9]|2[0-3]):[0-5][0-9]$') }
+        'NIGHTLY_TIME'      { return ($Value -eq 'off') -or ($Value -eq 'auto') -or ($Value -match '^([01][0-9]|2[0-3]):[0-5][0-9]$') }
     }
     return $false
 }
@@ -366,6 +380,15 @@ function ConvertTo-Time([string]$Text) {
 # Show-Time '14:30' returns '2:30 PM'.
 function Show-Time([string]$Time) {
     return ([datetime]::ParseExact($Time, 'HH:mm', [Globalization.CultureInfo]::InvariantCulture)).ToString('h:mm tt', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+# n8n usually publishes new versions on weekdays around 07:20 UTC. The nightly
+# update is suggested for 11:30 UTC (6:30 AM US Eastern Standard Time), a few
+# hours later, so it picks each one up within hours. ConvertFrom-UtcMinutes 690
+# returns 11:30 UTC (690 minutes after midnight) as this computer's local HH:mm.
+function ConvertFrom-UtcMinutes([int]$Minutes) {
+    $utc = [datetime]::SpecifyKind([datetime]::UtcNow.Date.AddMinutes($Minutes), 'Utc')
+    return $utc.ToLocalTime().ToString('HH:mm', [Globalization.CultureInfo]::InvariantCulture)
 }
 
 # Show-Seconds 300 returns "300 seconds (5 minutes)" so nobody has to do the math.
@@ -600,10 +623,23 @@ function Invoke-Question8 {
     Show-NewScreen 'question 8 of 8, Nightly update'
     $nightlyDefault = if ($S.NIGHTLY_TIME -eq 'off') { 'n' } else { 'y' }
     if (Ask-YesNo 'Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on and you need to be signed in at that time.' $nightlyDefault) {
-        if ($S.NIGHTLY_TIME -eq 'off') { $S.NIGHTLY_TIME = '02:00' }
+        # A saved time stays as it is. Otherwise suggest 11:30 UTC in local
+        # time, or 2:00 AM where that falls in the daytime (9 AM or later).
+        $suggested = 'no'
+        if ($S.NIGHTLY_TIME -eq 'off' -or $S.NIGHTLY_TIME -eq 'auto') {
+            $S.NIGHTLY_TIME = ConvertFrom-UtcMinutes 690
+            $suggested = 'yes'
+            if ([int]$S.NIGHTLY_TIME.Substring(0, 2) -ge 9) { $S.NIGHTLY_TIME = '02:00'; $suggested = 'night' }
+        }
         Write-Host ''
         Write-Host 'What time should it run? n8n is down for a few seconds while it updates,' -ForegroundColor White
         Write-Host 'so pick a time nobody is using it. You can type 2am, 2:30am, 11pm or 23:00.' -ForegroundColor White
+        Write-Host "New n8n versions usually come out on weekdays around $(Show-Time (ConvertFrom-UtcMinutes 440)) your time." -ForegroundColor DarkGray
+        if ($suggested -eq 'yes') {
+            Write-Host "Running at $(Show-Time $S.NIGHTLY_TIME), a few hours later, gets you each one within hours." -ForegroundColor DarkGray
+        } elseif ($suggested -eq 'night') {
+            Write-Host "That's during your day, so 2:00 AM is suggested. It gets each one that night." -ForegroundColor DarkGray
+        }
         while ($true) {
             $answer = Read-Host "  Press Enter for $(Show-Time $S.NIGHTLY_TIME), or type a time"
             if ($answer -eq '') { $answer = $S.NIGHTLY_TIME }

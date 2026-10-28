@@ -125,7 +125,7 @@ Each screen's header names its topic, and colors help you keep your place: the J
 | Which libraries can JavaScript Code nodes use? | Just `crypto` and `moment` |
 | Which libraries can Python Code nodes use? | Everything in Python's standard library |
 | Switch Execute Command and Local File Trigger back on? | Yes |
-| Run by itself every night? If yes, at what time? | Yes, at 2:00 AM |
+| Run by itself every night? If yes, at what time? | Yes, at a time worked out for your time zone (see [Picking a time](#picking-a-time)) |
 
 The two library questions are menus: everything that comes installed, a short common set, none, or your own pick. If you pick your own, the script reads the full list from the runners image you're about to run and shows it so you can copy names. It turns down any name that isn't on the list, so a typo can't slip through.
 
@@ -145,15 +145,15 @@ If you're comfortable with code, open the script and change the values in the Se
 
 | Setting | bash line | PowerShell line | What it is |
 |---|---|---|---|
-| `N8N_DATA_DIR` | 123 | 156 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
-| `N8N_VERSION` | 129 | 162 | `latest` (the default) means the newest release of the major version you're on: 2.x stays on 2.x, and only a run at the keyboard can move you to 3.x, after asking. See [What `latest` means](#what-latest-means). A number such as `2.45.4` holds you on exactly that release. Both images always use the same version. Only changeable here or in the settings file |
-| `N8N_HOST_PORT` | 132 | 165 | The port you open in the browser |
-| `N8N_WEBHOOK_URL` | 137 | 171 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
-| `DOCKER_NETWORK` | 140 | 174 | Only if you already have a network with another name |
-| `TASK_TIMEOUT` | 145 | 179 | Seconds a Code node may run before it's stopped |
-| `JS_*` and `PY_*` | 158-161 | 192-195 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
-| `ENABLE_EXEC_NODES` | 166 | 200 | `yes` turns Execute Command and Local File Trigger back on |
-| `NIGHTLY_TIME` | 171 | 205 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
+| `N8N_DATA_DIR` | 130 | 164 | Folder for n8n's database, encryption key, `task-runners.json` and the `files` folder. Defaults to `~/n8n` or `C:\Users\<you>\n8n` |
+| `N8N_VERSION` | 136 | 170 | `latest` (the default) means the newest release of the major version you're on: 2.x stays on 2.x, and only a run at the keyboard can move you to 3.x, after asking. See [What `latest` means](#what-latest-means). A number such as `2.45.4` holds you on exactly that release. Both images always use the same version. Only changeable here or in the settings file |
+| `N8N_HOST_PORT` | 139 | 173 | The port you open in the browser |
+| `N8N_WEBHOOK_URL` | 144 | 179 | Your public address, such as `https://n8n.example.com/`. Leave empty for a machine used only locally |
+| `DOCKER_NETWORK` | 147 | 182 | Only if you already have a network with another name |
+| `TASK_TIMEOUT` | 152 | 187 | Seconds a Code node may run before it's stopped |
+| `JS_*` and `PY_*` | 165-168 | 200-203 | What the Code node may import. Commas between names, `*` for everything, or empty for nothing |
+| `ENABLE_EXEC_NODES` | 173 | 208 | `yes` turns Execute Command and Local File Trigger back on |
+| `NIGHTLY_TIME` | 181 | 216 | When the script runs by itself every night, as 24-hour `HH:MM`, or `off`. `auto` (the default) has the setup question suggest a time for your time zone. The setup questions create or remove the schedule. If you set it here, schedule the script yourself |
 
 ## Options
 
@@ -177,7 +177,7 @@ By default the scripts allow every Python module available in the runners image 
 
 Each run pulls the images first and only then replaces the containers, so a failed pull leaves your current n8n running. n8n is down for the few seconds it takes to restart, so pick a quiet hour. Executions running at that moment are interrupted.
 
-The easy way is the last setup question. Say yes, give it a time such as `6:30am` (see [Picking a time](#picking-a-time)), and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, saving the nightly schedule (and turning it off or uninstalling) can make macOS ask whether Terminal may administer your computer. That's the schedule being saved, so click Allow. If you clicked Don't Allow, the script says it couldn't set up the nightly update; allow Terminal under System Settings > Privacy & Security and run `--reconfigure` again.
+The easy way is the last setup question. Say yes, take the time it suggests for your time zone or type your own (see [Picking a time](#picking-a-time)), and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, saving the nightly schedule (and turning it off or uninstalling) can make macOS ask whether Terminal may administer your computer. That's the schedule being saved, so click Allow. If you clicked Don't Allow, the script says it couldn't set up the nightly update; allow Terminal under System Settings > Privacy & Security and run `--reconfigure` again.
 
 If you edit the script instead of answering questions, schedule it yourself. On macOS or Linux, a cron entry like this runs it at 6:30 a.m. (edit with `crontab -e`, and use full paths). Cron's own `PATH` often can't find `docker`, so the line sets one:
 
@@ -198,6 +198,8 @@ schtasks /create /tn "n8n nightly update" /sc daily /st 06:30 /tr "powershell -W
 n8n publishes new versions on weekdays, usually around 07:20 UTC. That's about 3:20 AM Eastern in summer and 2:20 AM Eastern in winter. Now and then a release comes a few hours later. Docker's images follow 10 to 15 minutes after.
 
 If the nightly update runs before that, it picks up each release a day late. To get releases the same day they come out, pick a time a few hours after 07:20 UTC that's still quiet for you. For the US East Coast, 6:30 AM works well. For most of Europe, mid-morning is the equivalent, so pick whatever quiet hour suits you instead: a day's delay is harmless.
+
+The setup question does this for you. It shows when new versions usually come out in your time zone and suggests 11:30 UTC in your local time, which is 6:30 AM US Eastern Standard Time. If that falls at 9 AM or later where you are, it suggests 2:00 AM instead, so the update doesn't interrupt your day, and you get each new version that night. You can type any other time. The schedule uses your computer's clock, so it moves with daylight saving time, and the few hours of margin cover that.
 
 ## Updating n8n wiz
 
