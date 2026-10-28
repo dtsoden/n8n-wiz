@@ -661,7 +661,7 @@ question_8() {
   [ "$NIGHTLY_TIME" = off ] && nightly_default=n
   if ask_yes_no "Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on at that time." "$nightly_default"; then
     # A saved time stays as it is. Otherwise suggest 11:30 UTC in local time,
-    # or 2:00 AM where that falls in the daytime (9 AM or later).
+    # or 2:00 AM where that falls at 9 AM or later.
     if [ "$NIGHTLY_TIME" = off ] || [ "$NIGHTLY_TIME" = auto ]; then
       NIGHTLY_TIME="$(utc_to_local 690)"
       suggested=yes
@@ -673,7 +673,7 @@ question_8() {
     echo "${C_DIM}New n8n versions usually come out on weekdays around $(show_time "$(utc_to_local 440)") your time.${C_OFF}"
     case "$suggested" in
       yes)   echo "${C_DIM}Running at $(show_time "$NIGHTLY_TIME"), a few hours later, gets you each one within hours.${C_OFF}" ;;
-      night) echo "${C_DIM}That's during your day, so 2:00 AM is suggested. It gets each one that night.${C_OFF}" ;;
+      night) echo "${C_DIM}That's not a quiet hour where you are, so 2:00 AM is suggested. It gets each one that night.${C_OFF}" ;;
     esac
     while true; do
       read -r -p "  Press Enter for $(show_time "$NIGHTLY_TIME"), or type a time: " answer

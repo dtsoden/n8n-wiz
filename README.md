@@ -197,9 +197,9 @@ schtasks /create /tn "n8n nightly update" /sc daily /st 06:30 /tr "powershell -W
 
 n8n publishes new versions on weekdays, usually around 07:20 UTC. That's about 3:20 AM Eastern in summer and 2:20 AM Eastern in winter. Now and then a release comes a few hours later. Docker's images follow 10 to 15 minutes after.
 
-If the nightly update runs before that, it picks up each release a day late. To get releases the same day they come out, pick a time a few hours after 07:20 UTC that's still quiet for you. For the US East Coast, 6:30 AM works well. For most of Europe, mid-morning is the equivalent, so pick whatever quiet hour suits you instead: a day's delay is harmless.
+If the nightly update runs before that, it picks up each release a day late. To get releases the same day they come out, pick a time a few hours after 07:20 UTC that's still quiet for you. For the US East Coast, 6:30 AM works well in winter and 7:30 AM in summer. For most of Europe, mid-morning is the equivalent, so pick whatever quiet hour suits you instead: a day's delay is harmless.
 
-The setup question does this for you. It shows when new versions usually come out in your time zone and suggests 11:30 UTC in your local time, which is 6:30 AM US Eastern Standard Time. If that falls at 9 AM or later where you are, it suggests 2:00 AM instead, so the update doesn't interrupt your day, and you get each new version that night. You can type any other time. The schedule uses your computer's clock, so it moves with daylight saving time, and the few hours of margin cover that.
+The setup question does this for you. It shows when new versions usually come out in your time zone and suggests 11:30 UTC in your local time, which is 6:30 AM US Eastern Standard Time. If that falls at 9 AM or later where you are, which is daytime or evening, it suggests 2:00 AM instead, and you get each new version that night. You can type any other time. The schedule uses your computer's clock, so it moves with daylight saving time, and the few hours of margin cover that.
 
 ## Updating n8n wiz
 

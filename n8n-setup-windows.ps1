@@ -624,7 +624,7 @@ function Invoke-Question8 {
     $nightlyDefault = if ($S.NIGHTLY_TIME -eq 'off') { 'n' } else { 'y' }
     if (Ask-YesNo 'Do you want this script to run by itself every night, so n8n always stays up to date? This computer needs to be on and you need to be signed in at that time.' $nightlyDefault) {
         # A saved time stays as it is. Otherwise suggest 11:30 UTC in local
-        # time, or 2:00 AM where that falls in the daytime (9 AM or later).
+        # time, or 2:00 AM where that falls at 9 AM or later.
         $suggested = 'no'
         if ($S.NIGHTLY_TIME -eq 'off' -or $S.NIGHTLY_TIME -eq 'auto') {
             $S.NIGHTLY_TIME = ConvertFrom-UtcMinutes 690
@@ -638,7 +638,7 @@ function Invoke-Question8 {
         if ($suggested -eq 'yes') {
             Write-Host "Running at $(Show-Time $S.NIGHTLY_TIME), a few hours later, gets you each one within hours." -ForegroundColor DarkGray
         } elseif ($suggested -eq 'night') {
-            Write-Host "That's during your day, so 2:00 AM is suggested. It gets each one that night." -ForegroundColor DarkGray
+            Write-Host "That's not a quiet hour where you are, so 2:00 AM is suggested. It gets each one that night." -ForegroundColor DarkGray
         }
         while ($true) {
             $answer = Read-Host "  Press Enter for $(Show-Time $S.NIGHTLY_TIME), or type a time"
