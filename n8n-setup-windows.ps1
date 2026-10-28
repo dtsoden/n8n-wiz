@@ -206,7 +206,7 @@ $S = [ordered]@{
 }
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-$ScriptVersion = '1.2.0'
+$ScriptVersion = '1.2.1'
 
 # ---- Nothing below this line needs editing ----------------------------------
 
@@ -1040,13 +1040,45 @@ function Use-ExistingN8n {
     }
 }
 
+# A run at the keyboard with saved answers would otherwise replace, without a
+# word, an n8n that something else installed or replaced since the last run.
+# Say so, show what will be used, and ask first.
+function Confirm-ForeignN8n {
+    & docker container inspect n8n *> $null
+    if ($LASTEXITCODE -ne 0 -or (Test-OurN8n)) { return }
+    $c = @((& docker container inspect n8n) | Out-String | ConvertFrom-Json)[0]
+    $mount = $c.Mounts | Where-Object { $_.Destination -eq '/home/node/.n8n' } | Select-Object -First 1
+    $port = ''
+    if ($c.HostConfig.PortBindings -and $c.HostConfig.PortBindings.'5678/tcp') {
+        $port = [string]$c.HostConfig.PortBindings.'5678/tcp'[0].HostPort
+    }
+    Write-Host ''
+    Write-Host "The n8n running now wasn't set up by n8n wiz. Something else may have" -ForegroundColor Yellow
+    Write-Host 'installed or replaced it since you last ran this script.' -ForegroundColor Yellow
+    Write-Host "If you go ahead, it's replaced using your saved n8n wiz settings:"
+    Write-Host "  Data folder: $($S.N8N_DATA_DIR)"
+    if ($mount -and $mount.Source -and ($mount.Source.TrimEnd('\', '/') -ne $S.N8N_DATA_DIR.TrimEnd('\', '/'))) {
+        Write-Host "  The running n8n keeps its data in $($mount.Source) instead. Its workflows" -ForegroundColor Red
+        Write-Host "  only come along if that's the same folder." -ForegroundColor Red
+    }
+    Write-Host "  Port:        $($S.N8N_HOST_PORT)"
+    if ($port -and $port -ne $S.N8N_HOST_PORT) {
+        Write-Host "  The running n8n uses port $port." -ForegroundColor Yellow
+    }
+    if (-not (Ask-YesNo 'Do you want to replace it with your n8n wiz setup?' 'n')) {
+        Write-Host 'OK, nothing was changed.'
+        exit 0
+    }
+}
+
 # ---- Work out the settings --------------------------------------------------
 
 if ($Reconfigure) {
-    if (-not (Test-Path -LiteralPath $SettingsFile)) { Use-ExistingN8n }
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { Use-ExistingN8n } else { Confirm-ForeignN8n }
     Invoke-Questions
 } elseif (Test-Path -LiteralPath $SettingsFile) {
     Write-Host "Using settings from $SettingsFile"
+    if ($interactive -and -not $NoQuestions) { Confirm-ForeignN8n }
 } elseif ($NoQuestions -or -not $interactive) {
     # Nobody is here to answer the question Use-ExistingN8n asks, so an n8n
     # this script didn't create is left alone rather than replaced. This is a

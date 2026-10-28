@@ -173,7 +173,7 @@ NIGHTLY_TIME="02:00"
 # ---- Nothing below this line needs editing ----------------------------------
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.2.1"
 
 # Stop at the first command that fails.
 set -e
@@ -1089,13 +1089,42 @@ adopt_existing_n8n() {
   fi
 }
 
+# A run at the keyboard with saved answers would otherwise replace, without a
+# word, an n8n that something else installed or replaced since the last run.
+# Say so, show what will be used, and ask first.
+confirm_foreign_n8n() {
+  docker container inspect n8n >/dev/null 2>&1 || return 0
+  if is_our_n8n; then return 0; fi
+  local src port
+  src="$(docker container inspect -f '{{range .Mounts}}{{if eq .Destination "/home/node/.n8n"}}{{.Source}}{{end}}{{end}}' n8n 2>/dev/null || true)"
+  port="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{if eq $p "5678/tcp"}}{{(index $b 0).HostPort}}{{end}}{{end}}' n8n 2>/dev/null || true)"
+  echo
+  echo "${C_WARN}The n8n running now wasn't set up by n8n wiz. Something else may have${C_OFF}"
+  echo "${C_WARN}installed or replaced it since you last ran this script.${C_OFF}"
+  echo "If you go ahead, it's replaced using your saved n8n wiz settings:"
+  echo "  Data folder: $N8N_DATA_DIR"
+  if [ -n "$src" ] && [ "${src%/}" != "${N8N_DATA_DIR%/}" ]; then
+    echo "${C_ERR}  The running n8n keeps its data in $src instead. Its workflows${C_OFF}"
+    echo "${C_ERR}  only come along if that's the same folder.${C_OFF}"
+  fi
+  echo "  Port:        $N8N_HOST_PORT"
+  if [ -n "$port" ] && [ "$port" != "$N8N_HOST_PORT" ]; then
+    echo "${C_WARN}  The running n8n uses port $port.${C_OFF}"
+  fi
+  if ! ask_yes_no "Do you want to replace it with your n8n wiz setup?" n; then
+    echo "OK, nothing was changed."
+    exit 0
+  fi
+}
+
 # ---- Work out the settings --------------------------------------------------
 
 if [ "$RECONFIGURE" = yes ]; then
-  if [ ! -f "$SETTINGS_FILE" ]; then adopt_existing_n8n; fi
+  if [ ! -f "$SETTINGS_FILE" ]; then adopt_existing_n8n; else confirm_foreign_n8n; fi
   run_questions
 elif [ -f "$SETTINGS_FILE" ]; then
   echo "Using settings from $SETTINGS_FILE"
+  if [ -t 0 ] && [ "$NO_QUESTIONS" != yes ]; then confirm_foreign_n8n; fi
 elif [ "$NO_QUESTIONS" = yes ] || [ ! -t 0 ]; then
   # Nobody is here to answer the question adopt_existing_n8n asks, so an n8n
   # this script didn't create is left alone rather than replaced.
