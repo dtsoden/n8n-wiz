@@ -177,21 +177,27 @@ By default the scripts allow every Python module available in the runners image 
 
 Each run pulls the images first and only then replaces the containers, so a failed pull leaves your current n8n running. n8n is down for the few seconds it takes to restart, so pick a quiet hour. Executions running at that moment are interrupted.
 
-The easy way is the last setup question. Say yes, give it a time such as `2am`, and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, saving the nightly schedule (and turning it off or uninstalling) can make macOS ask whether Terminal may administer your computer. That's the schedule being saved, so click Allow. If you clicked Don't Allow, the script says it couldn't set up the nightly update; allow Terminal under System Settings > Privacy & Security and run `--reconfigure` again.
+The easy way is the last setup question. Say yes, give it a time such as `6:30am` (see [Picking a time](#picking-a-time)), and the script schedules itself: a cron entry on macOS and Linux, or a scheduled task called "n8n nightly update" on Windows. Each nightly run is logged to `n8n-nightly.log` next to the script. Run `--reconfigure` (or `-Reconfigure`) and say no to turn it off again. The Windows task runs while you're signed in, which is also when Docker Desktop runs, and creating it doesn't need an administrator. On macOS, saving the nightly schedule (and turning it off or uninstalling) can make macOS ask whether Terminal may administer your computer. That's the schedule being saved, so click Allow. If you clicked Don't Allow, the script says it couldn't set up the nightly update; allow Terminal under System Settings > Privacy & Security and run `--reconfigure` again.
 
-If you edit the script instead of answering questions, schedule it yourself. On macOS or Linux, a cron entry like this runs it at 2 a.m. (edit with `crontab -e`, and use full paths). Cron's own `PATH` often can't find `docker`, so the line sets one:
+If you edit the script instead of answering questions, schedule it yourself. On macOS or Linux, a cron entry like this runs it at 6:30 a.m. (edit with `crontab -e`, and use full paths). Cron's own `PATH` often can't find `docker`, so the line sets one:
 
 ```
-0 2 * * * PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin /bin/bash /path/to/n8n-setup/n8n-setup-mac-linux.sh --no-questions >> /path/to/n8n-setup/n8n-nightly.log 2>&1
+30 6 * * * PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin /bin/bash /path/to/n8n-setup/n8n-setup-mac-linux.sh --no-questions >> /path/to/n8n-setup/n8n-nightly.log 2>&1
 ```
 
 On Windows:
 
 ```
-schtasks /create /tn "n8n nightly update" /sc daily /st 02:00 /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\path\to\n8n-setup\n8n-setup-windows.ps1 -NoQuestions"
+schtasks /create /tn "n8n nightly update" /sc daily /st 06:30 /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\path\to\n8n-setup\n8n-setup-windows.ps1 -NoQuestions"
 ```
 
 `--no-questions` and `-NoQuestions` make sure a scheduled run never sits waiting for an answer. If Docker isn't running when a scheduled run starts, the script tries to start it and gives it three minutes before giving up. On Linux with Docker Engine that needs `sudo`, so keep Docker running there.
+
+### Picking a time
+
+n8n publishes new versions on weekdays, usually around 07:20 UTC. That's about 3:20 AM Eastern in summer and 2:20 AM Eastern in winter. Now and then a release comes a few hours later. Docker's images follow 10 to 15 minutes after.
+
+If the nightly update runs before that, it picks up each release a day late. To get releases the same day they come out, pick a time a few hours after 07:20 UTC that's still quiet for you. For the US East Coast, 6:30 AM works well. For most of Europe, mid-morning is the equivalent, so pick whatever quiet hour suits you instead: a day's delay is harmless.
 
 ## Updating n8n wiz
 
