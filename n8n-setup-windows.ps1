@@ -217,7 +217,7 @@ $S = [ordered]@{
 }
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-$ScriptVersion = '1.3.0'
+$ScriptVersion = '1.3.1'
 
 # ---- Nothing below this line needs editing ----------------------------------
 
@@ -315,9 +315,11 @@ function Save-SettingsFile {
 
 # Prints the question, offers the current value as the answer you get by
 # pressing Enter, turns "none" into an empty value, and asks again until the
-# answer works.
-function Ask([string]$Name, [string]$Question) {
-    $hint = if ($S[$Name] -eq '') {
+# answer works. $EmptyHint replaces the usual hint while the value is empty.
+function Ask([string]$Name, [string]$Question, [string]$EmptyHint = '') {
+    $hint = if ($S[$Name] -eq '' -and $EmptyHint) {
+        "  $EmptyHint"
+    } elseif ($S[$Name] -eq '') {
         '  Press Enter to leave this empty, or type something'
     } else {
         "  Press Enter for $($S[$Name]), or type something else"
@@ -513,10 +515,11 @@ function Invoke-Question3 {
     Show-NewScreen 'question 3 of 8, Internet address'
     $hasUrl = if ($S.N8N_WEBHOOK_URL -ne '') { 'y' } else { 'n' }
     if (Ask-YesNo "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." $hasUrl) {
-        while ($true) {
-            Ask 'N8N_WEBHOOK_URL' "What's that address? Include the https:// at the start."
-            if ($S.N8N_WEBHOOK_URL -ne '') { break }
-            Write-Host '  You said people will reach it from the internet, so I need the address.' -ForegroundColor Yellow
+        Ask 'N8N_WEBHOOK_URL' "What's that address? Include the https:// at the start." "Type the address, or press Enter if you don't have one yet"
+        # No address yet is fine: set n8n up for this computer, and the
+        # address can be added later with -Reconfigure.
+        if ($S.N8N_WEBHOOK_URL -eq '') {
+            Write-Host "  No address yet, so n8n will work on this computer only, at http://localhost:$($S.N8N_HOST_PORT). When you have the address, run this script again with -Reconfigure and add it." -ForegroundColor Yellow
         }
     } else {
         $S.N8N_WEBHOOK_URL = ''

@@ -183,7 +183,7 @@ NIGHTLY_TIME="auto"
 # ---- Nothing below this line needs editing ----------------------------------
 
 # Both scripts share one version number. Each release is tagged vX.Y.Z on GitHub.
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.3.1"
 
 # Stop at the first command that fails.
 set -e
@@ -312,13 +312,16 @@ save_settings() {
 
 # ---- Questions --------------------------------------------------------------
 
-# ask NAME "Question": prints the question, offers the current value as the
-# answer you get by pressing Enter, turns "none" into an empty value, and asks
-# again until the answer works.
+# ask NAME "Question" ["empty hint"]: prints the question, offers the current
+# value as the answer you get by pressing Enter, turns "none" into an empty
+# value, and asks again until the answer works. The optional third argument
+# replaces the usual hint while the value is empty.
 ask() {
   local name="$1" answer hint
   if [ -n "${!name}" ]; then
     hint="Press Enter for ${!name}, or type something else: "
+  elif [ -n "${3:-}" ]; then
+    hint="$3: "
   else
     hint="Press Enter to leave this empty, or type something: "
   fi
@@ -540,11 +543,12 @@ question_3() {
   local has_url=n
   [ -n "$N8N_WEBHOOK_URL" ] && has_url=y
   if ask_yes_no "Will anyone reach this n8n from the internet, at an address like https://n8n.example.com? Say no if you'll only use it on this computer." "$has_url"; then
-    while true; do
-      ask N8N_WEBHOOK_URL "What's that address? Include the https:// at the start."
-      [ -n "$N8N_WEBHOOK_URL" ] && break
-      echo "${C_WARN}  You said people will reach it from the internet, so I need the address.${C_OFF}"
-    done
+    ask N8N_WEBHOOK_URL "What's that address? Include the https:// at the start." "Type the address, or press Enter if you don't have one yet"
+    # No address yet is fine: set n8n up for this computer, and the address
+    # can be added later with --reconfigure.
+    if [ -z "$N8N_WEBHOOK_URL" ]; then
+      echo "${C_WARN}  No address yet, so n8n will work on this computer only, at http://localhost:$N8N_HOST_PORT. When you have the address, run this script again with --reconfigure and add it.${C_OFF}"
+    fi
   else
     N8N_WEBHOOK_URL=""
   fi

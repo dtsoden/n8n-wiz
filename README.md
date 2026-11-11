@@ -120,7 +120,7 @@ Each screen's header names its topic, and colors help you keep your place: the J
 |---|---|
 | Where should n8n keep its data? | `~/n8n`, or `C:\Users\<you>\n8n` on Windows |
 | Which port should n8n use? | 5678 |
-| Will anyone reach it from the internet? If yes, at what address? | No |
+| Will anyone reach it from the internet? If yes, at what address? | No. If you say yes but don't have the address yet, press Enter at the address question: n8n is set up for this computer, and you add the address later with `--reconfigure` |
 | How many seconds may a Code node run? | 300 seconds (5 minutes) |
 | Which libraries can JavaScript Code nodes use? | Just `crypto` and `moment` |
 | Which libraries can Python Code nodes use? | Everything in Python's standard library |
@@ -206,7 +206,7 @@ The setup question does this for you. It shows when new versions usually come ou
 Every run checks GitHub for a newer n8n wiz. When there is one, it says so on screen, or in the nightly log when nobody is watching:
 
 ```
-n8n wiz 1.3.0 is available (you have 1.2.0). Run this script with --update to get it.
+n8n wiz 1.3.1 is available (you have 1.3.0). Run this script with --update to get it.
 ```
 
 To update, run the script with `--update` (or `-Update` on Windows). It downloads the newest release's file and checks that it's a complete script of the right version. It saves your current file next to it as `.previous`, then swaps in the new one. Your settings file isn't touched, so there's nothing to set up again, and the nightly update uses the new version from that night on.
